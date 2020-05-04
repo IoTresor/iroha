@@ -107,7 +107,7 @@ struct CommandFixture {
     std::shared_ptr<shared_model::validation::AbstractValidator<
         shared_model::interface::TransactionBatch>>
         batch_validator =
-            std::make_shared<shared_model::validation::BatchValidator>(
+            std::make_shared<shared_model::validation::DefaultBatchValidator>(
                 iroha::test::kTestsValidatorsConfig);
     std::shared_ptr<shared_model::interface::TransactionBatchFactory>
         transaction_batch_factory = std::make_shared<
@@ -147,20 +147,20 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, std::size_t size) {
   if (size < 1) {
     return 0;
   }
-  boost::optional<iroha::ametsuchi::TxCacheStatusType> presense;
+  std::optional<iroha::ametsuchi::TxCacheStatusType> presense;
   using namespace iroha::ametsuchi::tx_cache_status_responses;
   switch (data[0] % 4) {
     case 0:
       presense = {};
       break;
     case 1:
-      presense = boost::make_optional(Committed{});
+      presense = std::make_optional(Committed{});
       break;
     case 2:
-      presense = boost::make_optional(Rejected{});
+      presense = std::make_optional(Rejected{});
       break;
     case 3:
-      presense = boost::make_optional(Missing{});
+      presense = std::make_optional(Missing{});
       break;
   }
   EXPECT_CALL(*handler.bq_, checkTxPresence(_))

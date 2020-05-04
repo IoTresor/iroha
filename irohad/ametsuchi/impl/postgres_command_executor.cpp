@@ -11,6 +11,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/format.hpp>
+#include "ametsuchi/impl/executor_common.hpp"
+#include "ametsuchi/impl/soci_std_optional.hpp"
 #include "ametsuchi/impl/soci_utils.hpp"
 #include "cryptography/public_key.hpp"
 #include "interfaces/commands/add_asset_quantity.hpp"
@@ -50,9 +52,6 @@ namespace {
   // from string
   const std::string kPgTrue{"true"};
   const std::string kPgFalse{"false"};
-
-  const auto kRootRolePermStr =
-      shared_model::interface::RolePermissionSet({Role::kRoot}).toBitstring();
 
   std::string makeJsonString(std::string value) {
     return std::string{"\""} + value + "\"";
@@ -188,7 +187,7 @@ namespace {
               JOIN account_has_roles AS ar on ar.role_id = rp.role_id
               WHERE ar.account_id = %4%)")
                          % kRolePermissionSetSize % permission_bitstring
-                         % kRootRolePermStr % account_id)
+                         % iroha::ametsuchi::kRootRolePermStr % account_id)
                             .str();
     return query;
   }
@@ -222,14 +221,6 @@ namespace {
                          % account_id % creator_id)
                             .str();
     return query;
-  }
-
-  shared_model::interface::types::DomainIdType getDomainFromName(
-      const shared_model::interface::types::AccountIdType &account_id) {
-    // TODO 03.10.18 andrei: IR-1728 Move getDomainFromName to shared_model
-    std::vector<std::string> res;
-    boost::split(res, account_id, boost::is_any_of("@"));
-    return res.at(1);
   }
 
   /**
@@ -397,7 +388,7 @@ namespace iroha {
             command_name_(std::move(command_name)),
             perm_converter_(std::move(perm_converter)) {
         arguments_string_builder_.init(command_name_)
-            .append("Validation", std::to_string(enable_validation));
+            .appendNamed("Validation", enable_validation);
       }
 
       template <typename T,
@@ -446,7 +437,21 @@ namespace iroha {
       // TODO IR-597 mboldyrev 2019.08.10: build args string on demand
       void addArgumentToString(const std::string &argument_name,
                                const std::string &value) {
-        arguments_string_builder_.append(argument_name, value);
+        arguments_string_builder_.appendNamed(argument_name, value);
+      }
+
+      void addArgumentToString(const std::string &argument_name,
+                               const boost::optional<std::string> &value) {
+        if (value) {
+          addArgumentToString(argument_name, *value);
+        }
+      }
+
+      void addArgumentToString(const std::string &argument_name,
+                               const std::optional<std::string> &value) {
+        if (value) {
+          addArgumentToString(argument_name, *value);
+        }
       }
 
       template <typename T>
@@ -563,9 +568,9 @@ namespace iroha {
           R"(
           WITH %s
             inserted AS (
-                INSERT INTO peer(public_key, address)
+                INSERT INTO peer(public_key, address, tls_certificate)
                 (
-                    SELECT :pubkey, :address
+                    SELECT lower(:pubkey), :address, :tls_certificate
                     %s
                 ) RETURNING (1)
             )
@@ -585,7 +590,7 @@ namespace iroha {
             insert_signatory AS
             (
                 INSERT INTO signatory(public_key)
-                (SELECT :pubkey %s)
+                (SELECT lower(:pubkey) %s)
                 ON CONFLICT (public_key)
                   DO UPDATE SET public_key = excluded.public_key
                 RETURNING (1)
@@ -594,7 +599,7 @@ namespace iroha {
             (
                 INSERT INTO account_has_signatory(account_id, public_key)
                 (
-                    SELECT :target, :pubkey
+                    SELECT :target, lower(:pubkey)
                     WHERE EXISTS (SELECT * FROM insert_signatory)
                 )
                 RETURNING (1)
@@ -750,7 +755,7 @@ namespace iroha {
             (
                 INSERT INTO signatory(public_key)
                 (
-                    SELECT :pubkey
+                    SELECT lower(:pubkey)
                     WHERE EXISTS (SELECT * FROM get_domain_default_role)
                       %s
                 )
@@ -771,7 +776,7 @@ namespace iroha {
             (
                 INSERT INTO account_has_signatory(account_id, public_key)
                 (
-                    SELECT :account_id, :pubkey WHERE
+                    SELECT :account_id, lower(:pubkey) WHERE
                        EXISTS (SELECT * FROM insert_account)
                 )
                 RETURNING (1)
@@ -963,7 +968,7 @@ namespace iroha {
                                                       R"(
           WITH %s
           removed AS (
-              DELETE FROM peer WHERE public_key = :pubkey
+              DELETE FROM peer WHERE public_key = lower(:pubkey)
               %s
               RETURNING (1)
           )
@@ -975,7 +980,7 @@ namespace iroha {
                                                       {(boost::format(R"(
             has_perm AS (%s),
             get_peer AS (
-              SELECT * from peer WHERE public_key = :pubkey LIMIT 1
+              SELECT * from peer WHERE public_key = lower(:pubkey) LIMIT 1
             ),
             check_peers AS (
               SELECT 1 WHERE (SELECT COUNT(*) FROM peer) > 1
@@ -996,15 +1001,16 @@ namespace iroha {
           WITH %s
             delete_account_signatory AS (DELETE FROM account_has_signatory
                 WHERE account_id = :target
-                AND public_key = :pubkey
+                AND public_key = lower(:pubkey)
                 %s
                 RETURNING (1)),
             delete_signatory AS
             (
-                DELETE FROM signatory WHERE public_key = :pubkey AND
+                DELETE FROM signatory WHERE public_key = lower(:pubkey) AND
                     NOT EXISTS (SELECT 1 FROM account_has_signatory
-                                WHERE public_key = :pubkey)
-                    AND NOT EXISTS (SELECT 1 FROM peer WHERE public_key = :pubkey)
+                                WHERE public_key = lower(:pubkey))
+                    AND NOT EXISTS (SELECT 1 FROM peer
+                                    WHERE public_key = lower(:pubkey))
                 RETURNING (1)
             )
           SELECT CASE
@@ -1012,9 +1018,9 @@ namespace iroha {
             CASE
                 WHEN EXISTS (SELECT * FROM delete_signatory) THEN 0
                 WHEN EXISTS (SELECT 1 FROM account_has_signatory
-                             WHERE public_key = :pubkey) THEN 0
+                             WHERE public_key = lower(:pubkey)) THEN 0
                 WHEN EXISTS (SELECT 1 FROM peer
-                             WHERE public_key = :pubkey) THEN 0
+                             WHERE public_key = lower(:pubkey)) THEN 0
                 ELSE 1
             END
             %s
@@ -1031,7 +1037,7 @@ namespace iroha {
           ),
           get_signatory AS (
               SELECT * FROM get_signatories
-              WHERE public_key = :pubkey
+              WHERE public_key = lower(:pubkey)
           ),
           check_account_signatories AS (
               SELECT quorum FROM get_account
@@ -1410,7 +1416,8 @@ namespace iroha {
           add_peer_statements_, do_validation, "AddPeer", perm_converter_);
       executor.use("creator", creator_account_id);
       executor.use("address", peer.address());
-      executor.use("pubkey", peer.pubkey().hex());
+      executor.use("pubkey", peer.pubkey());
+      executor.use("tls_certificate", peer.tlsCertificate());
 
       return executor.execute();
     }
@@ -1420,7 +1427,7 @@ namespace iroha {
         const shared_model::interface::types::AccountIdType &creator_account_id,
         bool do_validation) {
       auto &target = command.accountId();
-      const auto &pubkey = command.pubkey().hex();
+      const auto &pubkey = command.pubkey();
 
       StatementExecutor executor(add_signatory_statements_,
                                  do_validation,
@@ -1470,8 +1477,10 @@ namespace iroha {
       executor.use("have_expected_value",
                    static_cast<bool>(command.oldValue()));
       executor.use("expected_value", expected_json_value);
-      executor.use("creator_domain", getDomainFromName(creator_account_id));
-      executor.use("target_domain", getDomainFromName(command.accountId()));
+      auto creator_domain = getDomainFromName(creator_account_id);
+      executor.use("creator_domain", creator_domain);
+      auto target_domain = getDomainFromName(command.accountId());
+      executor.use("target_domain", target_domain);
 
       return executor.execute();
     }
@@ -1482,7 +1491,7 @@ namespace iroha {
         bool do_validation) {
       auto &account_name = command.accountName();
       auto &domain_id = command.domainId();
-      auto &pubkey = command.pubkey().hex();
+      auto &pubkey = command.pubkey();
       shared_model::interface::types::AccountIdType account_id =
           account_name + "@" + domain_id;
 
@@ -1598,7 +1607,7 @@ namespace iroha {
         const shared_model::interface::RemovePeer &command,
         const shared_model::interface::types::AccountIdType &creator_account_id,
         bool do_validation) {
-      auto pubkey = command.pubkey().hex();
+      auto pubkey = command.pubkey();
 
       StatementExecutor executor(remove_peer_statements_,
                                  do_validation,
@@ -1615,7 +1624,7 @@ namespace iroha {
         const shared_model::interface::types::AccountIdType &creator_account_id,
         bool do_validation) {
       auto &account_id = command.accountId();
-      auto &pubkey = command.pubkey().hex();
+      auto &pubkey = command.pubkey();
 
       StatementExecutor executor(remove_signatory_statements_,
                                  do_validation,

@@ -11,6 +11,7 @@
 #include "framework/result_gtest_checkers.hpp"
 #include "integration/executor/executor_fixture.hpp"
 #include "integration/executor/executor_fixture_param_provider.hpp"
+#include "interfaces/permissions.hpp"
 
 namespace executor_testing {
   namespace query_permission_test {
@@ -25,12 +26,12 @@ namespace executor_testing {
     decltype(::testing::Combine(
         executor_testing::getExecutorTestParams(),
         ::testing::ValuesIn({SpecificQueryPermissionTestData{}})))
-    getParams(
-        shared_model::interface::RolePermissionSet permission_to_query_myself,
-        shared_model::interface::RolePermissionSet
-            permission_to_query_my_domain,
-        shared_model::interface::RolePermissionSet
-            permission_to_query_everyone);
+    getParams(boost::optional<shared_model::interface::permissions::Role>
+                  permission_to_query_myself,
+              boost::optional<shared_model::interface::permissions::Role>
+                  permission_to_query_my_domain,
+              boost::optional<shared_model::interface::permissions::Role>
+                  permission_to_query_everyone);
 
     template <typename SpecificQueryFixture>
     struct QueryPermissionTest
@@ -61,15 +62,15 @@ namespace executor_testing {
         using namespace framework::expected;
         // create target user
         target_permissions |= permissions_param_.spectator_permissions;
-        assertResultValue(getItf().createUserWithPerms(
+        IROHA_ASSERT_RESULT_VALUE(getItf().createUserWithPerms(
             kUser, kDomain, kUserKeypair.publicKey(), target_permissions));
         // create spectators
-        assertResultValue(getItf().createUserWithPerms(
+        IROHA_ASSERT_RESULT_VALUE(getItf().createUserWithPerms(
             kSecondUser,
             kDomain,
             kSameDomainUserKeypair.publicKey(),
             permissions_param_.spectator_permissions));
-        assertResultValue(getItf().createUserWithPerms(
+        IROHA_ASSERT_RESULT_VALUE(getItf().createUserWithPerms(
             kSecondUser,
             kSecondDomain,
             kSecondDomainUserKeypair.publicKey(),

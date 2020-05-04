@@ -127,14 +127,11 @@ node ('master') {
     "IROHA_POSTGRES_PORT": "5432",
     "GIT_RAW_BASE_URL": "https://raw.githubusercontent.com/hyperledger/iroha"
   ]
-  environment.each { e ->
-    environmentList.add("${e.key}=${e.value}")
-  }
 
   // Define variable and params
 
   //All variable and Default values
-  x64linux_compiler_list = ['gcc5']
+  x64linux_compiler_list = ['gcc7']
   mac_compiler_list = []
   win_compiler_list = []
 
@@ -216,7 +213,7 @@ node ('master') {
         break;
      case 'Before merge to trunk':
         gitNotify ("Jenkins: Merge to trunk", "Started...", 'PENDING')
-        x64linux_compiler_list = ['gcc5','gcc7', 'clang6' , 'clang7']
+        x64linux_compiler_list = ['gcc7', 'gcc9', 'clang7' , 'clang9']
         mac_compiler_list = ['appleclang']
         win_compiler_list = ['msvc']
         testing = true
@@ -228,7 +225,7 @@ node ('master') {
         useBTF = true
         break;
      case 'Nightly build':
-        x64linux_compiler_list = ['gcc5','gcc7', 'clang6' , 'clang7']
+        x64linux_compiler_list = ['gcc7', 'gcc9', 'clang7' , 'clang9']
         mac_compiler_list = ['appleclang']
         win_compiler_list = ['msvc']
         testing = true
@@ -242,6 +239,17 @@ node ('master') {
         specialBranch=false
         packagePush=false
         doxygen=false
+        break;
+     case 'Push demo':
+        build_type='Release'
+        testing=false
+        environment["DOCKER_REGISTRY_BASENAME"] = 'soramitsu/iroha'
+        pushDockerTag = scmVars.GIT_LOCAL_BRANCH.trim().replaceAll('/','-')
+        packageBuild=true
+        fuzzing=false
+        benchmarking=false
+        coredumps=false
+        packagePush=true
         break;
      case 'Custom command':
         if (cmd_sanitize(params.custom_cmd)){
@@ -259,6 +267,11 @@ node ('master') {
         println("The value build_scenario='${build_scenario}' is not implemented");
         sh "exit 1"
         break;
+  }
+
+  // convert dictionary to list
+  environment.each { e ->
+    environmentList.add("${e.key}=${e.value}")
   }
 
   echo """
@@ -301,12 +314,12 @@ node ('master') {
       // TODO 2019-08-14 lebdron: IR-600 Fix integration tests execution when built with shared libraries
       // Build with shared libraries
       x64LinuxBuildSteps += [{x64LinuxBuildScript.buildSteps(
-      parallelism==0 ?x64LinuxWorker.cpusAvailable : parallelism, ['gcc5'], build_type, true, false, false,
+      parallelism==0 ?x64LinuxWorker.cpusAvailable : parallelism, ['gcc7'], build_type, true, false, false,
       false, testList, false, false, false, false, false, false, fuzzing, benchmarking, false, useBTF, use_libursa, false, environmentList)}]
       if (!use_libursa) {
         // Force build with libursa
         x64LinuxBuildSteps += [{x64LinuxBuildScript.buildSteps(
-        parallelism==0 ?x64LinuxWorker.cpusAvailable : parallelism, ['gcc5'], build_type, build_shared_libs, false, false,
+        parallelism==0 ?x64LinuxWorker.cpusAvailable : parallelism, ['gcc7'], build_type, build_shared_libs, false, false,
         testing, testList, false, false, false, false, false, false, fuzzing, benchmarking, coredumps, useBTF, true, false, environmentList)}]
       }
     }

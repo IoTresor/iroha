@@ -5,6 +5,8 @@
 
 #include "interfaces/common_objects/peer.hpp"
 
+#include <optional>
+
 #include "cryptography/public_key.hpp"
 
 namespace shared_model {
@@ -12,13 +14,15 @@ namespace shared_model {
     std::string Peer::toString() const {
       return detail::PrettyStringBuilder()
           .init("Peer")
-          .append("address", address())
-          .append("pubkey", pubkey().toString())
+          .appendNamed("address", address())
+          .appendNamed("pubkey", pubkey())
+          .appendNamed("tlsCertificate", bool(tlsCertificate()))
           .finalize();
     }
 
     bool Peer::operator==(const ModelType &rhs) const {
-      return address() == rhs.address() and pubkey() == rhs.pubkey();
+      return address() == rhs.address() and pubkey() == rhs.pubkey()
+          and tlsCertificate() == rhs.tlsCertificate();
     }
   }  // namespace interface
 }  // namespace shared_model

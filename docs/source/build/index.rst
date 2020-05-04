@@ -84,7 +84,7 @@ After you execute this script, the following things will happen:
 
 #. The script will check whether you have containers with Iroha already running. Successful completion finishes with the new container shell.
 
-#. The script will download ``hyperledger/iroha:develop-build`` and ``postgres`` images. ``hyperledger/iroha:develop-build`` image contains all development dependencies and is based on top of ``ubuntu:16.04``. ``postgres`` image is required for starting and running Iroha.
+#. The script will download ``hyperledger/iroha:develop-build`` and ``postgres`` images. ``hyperledger/iroha:develop-build`` image contains all development dependencies and is based on top of ``ubuntu:18.04``. ``postgres`` image is required for starting and running Iroha.
 
 #. Two containers are created and launched.
 
@@ -99,7 +99,7 @@ Linux
 
 To build Iroha, you will need the following packages:
 
-``build-essential`` ``git`` ``tar`` ``ninja-build`` ``curl`` ``unzip`` ``cmake``
+``build-essential`` ``git`` ``ca-certificates`` ``tar`` ``ninja-build`` ``curl`` ``unzip`` ``cmake``
 
 Use this code to install environment dependencies on Debian-based Linux distro.
 
@@ -108,7 +108,7 @@ Use this code to install environment dependencies on Debian-based Linux distro.
   apt-get update; \
   apt-get -y --no-install-recommends install \
   build-essential ninja-build \
-  git tar curl unzip cmake
+  git ca-certificates tar curl unzip cmake
 
 .. note::  If you are willing to actively develop Iroha and to build shared
   libraries, please consider installing the
@@ -156,7 +156,6 @@ Install CMake, Git, Microsoft compilers via chocolatey being in Administrative m
 .. code-block:: shell
 
   choco install cmake git visualstudio2019-workload-vctools ninja
-  # visualstudio2017-workload-vctools should work as well
 
 
 PostgreSQL is not a build dependency, but it is recommended to install it now for the testing later:
@@ -286,9 +285,7 @@ Packaging Specific Parameters
 +-----------------------+-----------------+---------+--------------------------------------------+
 | Parameter             | Possible values | Default | Description                                |
 +=======================+=================+=========+============================================+
-| ENABLE_LIBS_PACKAGING |      ON/OFF     | ON      | Enables or disables all types of packaging |
-+-----------------------+                 +---------+--------------------------------------------+
-| PACKAGE_ZIP           |                 | OFF     | Enables or disables zip packaging          |
+| PACKAGE_ZIP           |      ON/OFF     | OFF     | Enables or disables zip packaging          |
 +-----------------------+                 +---------+--------------------------------------------+
 | PACKAGE_TGZ           |                 | OFF     | Enables or disables tar.gz packaging       |
 +-----------------------+                 +---------+--------------------------------------------+

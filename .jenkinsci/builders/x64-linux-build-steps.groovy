@@ -44,12 +44,14 @@ def buildSteps(int parallelism, List compilerVersions, String build_type, boolea
       boolean testing, String testList, boolean cppcheck, boolean sonar, boolean codestyle, boolean docs, boolean packagebuild, boolean sanitize,
       boolean fuzzing, boolean benchmarking, boolean coredumps, boolean useBTF, boolean use_libursa, boolean forceDockerDevelopBuild, List environment) {
   withEnv(environment) {
+    def build, vars, utils, dockerUtils, doxygen
+    stage('Prepare Linux environment') {
     scmVars = checkout scm
-    def build = load '.jenkinsci/build.groovy'
-    def vars = load ".jenkinsci/utils/vars.groovy"
-    def utils = load ".jenkinsci/utils/utils.groovy"
-    def dockerUtils = load ".jenkinsci/utils/docker-pull-or-build.groovy"
-    def doxygen = load ".jenkinsci/utils/doxygen.groovy"
+    build = load '.jenkinsci/build.groovy'
+    vars = load ".jenkinsci/utils/vars.groovy"
+    utils = load ".jenkinsci/utils/utils.groovy"
+    dockerUtils = load ".jenkinsci/utils/docker-pull-or-build.groovy"
+    doxygen = load ".jenkinsci/utils/doxygen.groovy"
     buildDir = 'build'
     compilers = vars.compilerMapping()
     cmakeBooleanOption = [ (true): 'ON', (false): 'OFF' ]
@@ -78,15 +80,18 @@ def buildSteps(int parallelism, List compilerVersions, String build_type, boolea
            --network=${env.IROHA_NETWORK} postgres:9.5 -c 'max_prepared_transactions=100'
       fi
     """
-
+    referenceBranchOrCommit = 'master'
+    if (scmVars.GIT_LOCAL_BRANCH == referenceBranchOrCommit && scmVars.GIT_PREVIOUS_COMMIT) {
+      referenceBranchOrCommit = scmVars.GIT_PREVIOUS_COMMIT
+    }
     iC = dockerUtils.dockerPullOrBuild("${platform}-develop-build",
         "${env.GIT_RAW_BASE_URL}/${scmVars.GIT_COMMIT}/docker/develop/Dockerfile",
-        "${env.GIT_RAW_BASE_URL}/master/docker/develop/Dockerfile",
+        "${env.GIT_RAW_BASE_URL}/${referenceBranchOrCommit}/docker/develop/Dockerfile",
         scmVars,
         environment,
         forceDockerDevelopBuild,
         ['PARALLELISM': parallelism])
-
+    }
     iC.inside(""
     + " -e IROHA_POSTGRES_HOST=${env.IROHA_POSTGRES_HOST}"
     + " -e IROHA_POSTGRES_PORT=${env.IROHA_POSTGRES_PORT}"

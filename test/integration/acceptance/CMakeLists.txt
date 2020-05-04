@@ -5,8 +5,8 @@
 
 add_library(acceptance_fixture acceptance_fixture.cpp)
 target_link_libraries(acceptance_fixture
-    gtest::gtest
-    gmock::gmock
+    GTest::gtest
+    GTest::gmock
     common_test_constants
     shared_model_default_builders
     )
@@ -33,12 +33,6 @@ target_link_libraries(remove_peer_test
 
 addtest(create_domain_test create_domain_test.cpp)
 target_link_libraries(create_domain_test
-    acceptance_fixture
-    integration_framework
-    )
-
-addtest(create_role_test create_role_test.cpp)
-target_link_libraries(create_role_test
     acceptance_fixture
     integration_framework
     )
@@ -130,30 +124,6 @@ query_permission_test_base.cpp;\
 query_permission_test_txs.cpp"
     )
 target_link_libraries(query_permissions_common_test
-    acceptance_fixture
-    integration_framework
-    )
-
-addtest(get_account_test
-    get_account_test.cpp
-    )
-target_link_libraries(get_account_test
-    acceptance_fixture
-    integration_framework
-    )
-
-addtest(remove_signatory_test
-    remove_signatory_test.cpp
-    )
-target_link_libraries(remove_signatory_test
-    acceptance_fixture
-    integration_framework
-    )
-
-addtest(get_asset_info_test
-    get_asset_info_test.cpp
-    )
-target_link_libraries(get_asset_info_test
     acceptance_fixture
     integration_framework
     )

@@ -11,6 +11,7 @@
 #include "interfaces/iroha_internal/transaction_batch.hpp"
 #include "interfaces/iroha_internal/transaction_batch_factory_impl.hpp"
 #include "module/irohad/common/validators_config.hpp"
+#include "validators/default_validator.hpp"
 
 using namespace shared_model;
 using ::testing::_;
@@ -22,7 +23,7 @@ class TransactionBatchTest : public Test {
  public:
   TransactionBatchTest() {
     auto batch_validator =
-        std::make_shared<shared_model::validation::BatchValidator>(
+        std::make_shared<shared_model::validation::DefaultBatchValidator>(
             iroha::test::kTestsValidatorsConfig);
     factory_ = std::make_shared<interface::TransactionBatchFactoryImpl>(
         batch_validator);
@@ -170,7 +171,10 @@ TEST_F(TransactionBatchTest, CreateSingleTxBatchWhenValid) {
   auto keypair = crypto::DefaultCryptoAlgorithmType::generateKeypair();
   auto signed_blob =
       crypto::DefaultCryptoAlgorithmType::sign(tx1->payload(), keypair);
-  tx1->addSignature(signed_blob, keypair.publicKey());
+  tx1->addSignature(
+      shared_model::interface::types::SignedHexStringView{signed_blob.hex()},
+      shared_model::interface::types::PublicKeyHexStringView{
+          keypair.publicKey().hex()});
 
   auto transaction_batch = factory_->createTransactionBatch(tx1);
 

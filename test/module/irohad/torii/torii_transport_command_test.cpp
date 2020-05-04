@@ -31,6 +31,7 @@
 
 using ::testing::_;
 using ::testing::A;
+using ::testing::AtLeast;
 using ::testing::Invoke;
 using ::testing::Property;
 using ::testing::Return;
@@ -156,10 +157,10 @@ TEST_F(CommandServiceTransportGrpcTest, ListTorii) {
 
   EXPECT_CALL(*proto_tx_validator, validate(_))
       .Times(kTimes)
-      .WillRepeatedly(Return(shared_model::validation::Answer{}));
+      .WillRepeatedly(Return(std::nullopt));
   EXPECT_CALL(*tx_validator, validate(_))
       .Times(kTimes)
-      .WillRepeatedly(Return(shared_model::validation::Answer{}));
+      .WillRepeatedly(Return(std::nullopt));
   EXPECT_CALL(
       *batch_factory,
       createTransactionBatch(
@@ -185,13 +186,12 @@ TEST_F(CommandServiceTransportGrpcTest, ListToriiInvalid) {
     request.add_transactions();
   }
 
-  shared_model::validation::Answer error;
-  error.addReason(std::make_pair("some error", std::vector<std::string>{}));
+  shared_model::validation::ValidationError error{"some error", {}};
   EXPECT_CALL(*proto_tx_validator, validate(_))
-      .Times(kTimes)
-      .WillRepeatedly(Return(shared_model::validation::Answer{}));
+      .Times(AtLeast(1))
+      .WillRepeatedly(Return(std::nullopt));
   EXPECT_CALL(*tx_validator, validate(_))
-      .Times(kTimes)
+      .Times(AtLeast(1))
       .WillRepeatedly(Return(error));
   EXPECT_CALL(*command_service, handleTransactionBatch(_)).Times(0);
   EXPECT_CALL(*status_bus, publish(_)).Times(kTimes);
@@ -204,8 +204,8 @@ TEST_F(CommandServiceTransportGrpcTest, ListToriiInvalid) {
  *        and some number of valid transactions
  *        and one stateless invalid tx
  * @when calling ListTorii
- * @then handleTransactionBatch is called kTimes - 1 times
- *       and statelessInvalid status is published for invalid transaction
+ * @then handleTransactionBatch is not called
+ *       and statelessInvalid status is published for all transactions
  */
 TEST_F(CommandServiceTransportGrpcTest, ListToriiPartialInvalid) {
   grpc::ServerContext context;
@@ -220,27 +220,30 @@ TEST_F(CommandServiceTransportGrpcTest, ListToriiPartialInvalid) {
   size_t counter = 0;
   EXPECT_CALL(*proto_tx_validator, validate(_))
       .Times(kTimes)
-      .WillRepeatedly(Return(shared_model::validation::Answer{}));
+      .WillRepeatedly(Return(std::nullopt));
   EXPECT_CALL(*tx_validator, validate(_))
       .Times(kTimes)
-      .WillRepeatedly(Invoke([this, &counter, kError](const auto &) mutable {
-        shared_model::validation::Answer res;
-        if (counter++ == kTimes - 1) {
-          res.addReason(std::make_pair(kError, std::vector<std::string>{}));
-        }
-        return res;
-      }));
+      .WillRepeatedly(
+          Invoke([this, &counter, kError](const auto &) mutable
+                 -> std::optional<shared_model::validation::ValidationError> {
+            if (counter++ == kTimes - 1) {
+              return shared_model::validation::ValidationError{kError, {}};
+            }
+            return std::nullopt;
+          }));
   EXPECT_CALL(
       *batch_factory,
       createTransactionBatch(
           A<const shared_model::interface::types::SharedTxsCollectionType &>()))
-      .Times(kTimes - 1);
+      .Times(0);
 
-  EXPECT_CALL(*command_service, handleTransactionBatch(_)).Times(kTimes - 1);
-  EXPECT_CALL(*status_bus, publish(_)).WillOnce(Invoke([&kError](auto status) {
-    EXPECT_THAT(status->statelessErrorOrCommandName(),
-                testing::HasSubstr(kError));
-  }));
+  EXPECT_CALL(*command_service, handleTransactionBatch(_)).Times(0);
+  EXPECT_CALL(*status_bus, publish(_))
+      .Times(kTimes)
+      .WillRepeatedly(Invoke([&kError](auto status) {
+        EXPECT_THAT(status->statelessErrorOrCommandName(),
+                    testing::HasSubstr(kError));
+      }));
 
   transport_grpc->ListTorii(&context, &request, &response);
 }

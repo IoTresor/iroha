@@ -9,18 +9,24 @@
 
 #include <boost/range/adaptor/filtered.hpp>
 #include <boost/range/adaptor/transformed.hpp>
+#include <rxcpp/rx-lite.hpp>
 #include "ametsuchi/tx_presence_cache.hpp"
+#include "backend/protobuf/deserialize_repeated_transactions.hpp"
 #include "backend/protobuf/transaction.hpp"
+#include "interfaces/iroha_internal/parse_and_create_batches.hpp"
 #include "interfaces/iroha_internal/transaction_batch.hpp"
 #include "interfaces/transaction.hpp"
 #include "logger/logger.hpp"
+#include "multi_sig_transactions/mst_types.hpp"
+#include "multi_sig_transactions/state/mst_state.hpp"
 #include "network/impl/grpc_channel_builder.hpp"
 #include "validators/field_validator.hpp"
 
 using namespace iroha;
 using namespace iroha::network;
 
-using iroha::ConstRefState;
+using shared_model::interface::types::PublicKeyHexStringView;
+
 namespace {
   auto default_sender_factory = [](const shared_model::interface::Peer &to) {
     return createClient<transport::MstTransportGrpc>(to.address());
@@ -28,9 +34,11 @@ namespace {
 }
 void sendStateAsyncImpl(
     const shared_model::interface::Peer &to,
-    ConstRefState state,
+    MstState const &state,
     const std::string &sender_key,
     AsyncGrpcClient<google::protobuf::Empty> &async_call,
+    std::function<void(grpc::Status &, google::protobuf::Empty &)> on_response =
+        {},
     MstTransportGrpc::SenderFactory sender_factory = default_sender_factory);
 
 MstTransportGrpc::MstTransportGrpc(
@@ -57,75 +65,55 @@ MstTransportGrpc::MstTransportGrpc(
       log_(std::move(log)),
       sender_factory_(sender_factory) {}
 
-shared_model::interface::types::SharedTxsCollectionType
-MstTransportGrpc::deserializeTransactions(const transport::MstState *request) {
-  return boost::copy_range<
-      shared_model::interface::types::SharedTxsCollectionType>(
-      request->transactions()
-      | boost::adaptors::transformed(
-            [&](const auto &tx) { return transaction_factory_->build(tx); })
-      | boost::adaptors::filtered([&](const auto &result) {
-          return result.match(
-              [](const auto &) { return true; },
-              [&](const auto &error) {
-                log_->info("Transaction deserialization failed: hash {}, {}",
-                           error.error.hash,
-                           error.error.error);
-                return false;
-              });
-        })
-      | boost::adaptors::transformed([&](auto result) {
-          return std::move(
-                     boost::get<iroha::expected::ValueOf<decltype(result)>>(
-                         result))
-              .value;
-        }));
-}
-
 grpc::Status MstTransportGrpc::SendState(
     ::grpc::ServerContext *context,
     const ::iroha::network::transport::MstState *request,
     ::google::protobuf::Empty *response) {
   log_->info("MstState Received");
-  auto transactions = deserializeTransactions(request);
 
-  auto batches = batch_parser_->parseBatches(transactions);
+  auto transactions = shared_model::proto::deserializeTransactions(
+      *transaction_factory_, request->transactions());
+  if (auto e = expected::resultToOptionalError(transactions)) {
+    log_->warn(
+        "Transaction deserialization failed: hash {}, {}", e->hash, e->error);
+    return ::grpc::Status::OK;
+  }
 
+  auto batches = shared_model::interface::parseAndCreateBatches(
+      *batch_parser_, *batch_factory_, std::move(transactions).assumeValue());
+  if (auto e = expected::resultToOptionalError(batches)) {
+    log_->warn("Batch deserialization failed: {}", *e);
+    return ::grpc::Status::OK;
+  }
   MstState new_state = MstState::empty(mst_state_logger_, mst_completer_);
-
-  for (auto &batch : batches) {
-    batch_factory_->createTransactionBatch(batch).match(
-        [&](auto &&value) {
-          auto cache_presence = tx_presence_cache_->check(*value.value);
-          if (not cache_presence) {
-            // TODO andrei 30.11.18 IR-51 Handle database error
-            log_->warn("Check tx presence database error. Batch: {}",
-                       *value.value);
-            return;
-          }
-          auto is_replay = std::any_of(
-              cache_presence->begin(),
-              cache_presence->end(),
-              [](const auto &tx_status) {
-                return iroha::visit_in_place(
-                    tx_status,
-                    [](const iroha::ametsuchi::tx_cache_status_responses::
-                           Missing &) { return false; },
-                    [](const auto &) { return true; });
-              });
-
-          if (not is_replay) {
-            new_state += std::move(value).value;
-          }
-        },
-        [&](const auto &error) {
-          log_->warn("Batch deserialization failed: {}", error.error);
+  auto opt_batches = expected::resultToOptionalValue(std::move(batches));
+  for (auto &batch : *opt_batches) {
+    auto cache_presence = tx_presence_cache_->check(*batch);
+    if (not cache_presence) {
+      // TODO andrei 30.11.18 IR-51 Handle database error
+      log_->warn("Check tx presence database error. Batch: {}", *batch);
+      continue;
+    }
+    auto is_replay = std::any_of(
+        cache_presence->begin(),
+        cache_presence->end(),
+        [](const auto &tx_status) {
+          return std::visit(
+              make_visitor(
+                  [](const iroha::ametsuchi::tx_cache_status_responses::Missing
+                         &) { return false; },
+                  [](const auto &) { return true; }),
+              tx_status);
         });
+
+    if (not is_replay) {
+      new_state += std::move(batch);
+    }
   }
 
   log_->info("batches in MstState: {}", new_state.getBatches().size());
 
-  shared_model::crypto::PublicKey source_key(request->source_peer_key());
+  auto source_key = iroha::bytestringToHexstring(request->source_peer_key());
   auto key_invalid_reason =
       shared_model::validation::validatePubkey(source_key);
   if (key_invalid_reason) {
@@ -142,7 +130,8 @@ grpc::Status MstTransportGrpc::SendState(
   }
 
   if (auto subscriber = subscriber_.lock()) {
-    subscriber->onNewState(source_key, std::move(new_state));
+    subscriber->onNewState(PublicKeyHexStringView{source_key},
+                           std::move(new_state));
   } else {
     log_->warn("No subscriber for MST SendState event is set");
   }
@@ -155,30 +144,43 @@ void MstTransportGrpc::subscribe(
   subscriber_ = notification;
 }
 
-void MstTransportGrpc::sendState(const shared_model::interface::Peer &to,
-                                 ConstRefState providing_state) {
-  log_->info("Propagate MstState to peer {}", to.address());
-  sendStateAsyncImpl(to,
-                     providing_state,
-                     my_key_,
-                     *async_call_,
-                     sender_factory_.value_or(default_sender_factory));
+rxcpp::observable<bool> MstTransportGrpc::sendState(
+    shared_model::interface::Peer const &to, MstState const &providing_state) {
+  return rxcpp::observable<>::create<bool>([&](auto s) {
+    log_->info("Propagate MstState to peer {}", to.address());
+    sendStateAsyncImpl(to,
+                       providing_state,
+                       my_key_,
+                       *async_call_,
+                       [s](auto &status, auto &) {
+                         s.on_next(status.ok());
+                         s.on_completed();
+                       },
+                       sender_factory_.value_or(default_sender_factory));
+  });
 }
 
 void iroha::network::sendStateAsync(
     const shared_model::interface::Peer &to,
-    ConstRefState state,
+    MstState const &state,
     const shared_model::crypto::PublicKey &sender_key,
-    AsyncGrpcClient<google::protobuf::Empty> &async_call) {
-  sendStateAsyncImpl(
-      to, state, shared_model::crypto::toBinaryString(sender_key), async_call);
+    AsyncGrpcClient<google::protobuf::Empty> &async_call,
+    std::function<void(grpc::Status &, google::protobuf::Empty &)>
+        on_response) {
+  sendStateAsyncImpl(to,
+                     state,
+                     shared_model::crypto::toBinaryString(sender_key),
+                     async_call,
+                     std::move(on_response));
 }
 
-void sendStateAsyncImpl(const shared_model::interface::Peer &to,
-                        ConstRefState state,
-                        const std::string &sender_key,
-                        AsyncGrpcClient<google::protobuf::Empty> &async_call,
-                        MstTransportGrpc::SenderFactory sender_factory) {
+void sendStateAsyncImpl(
+    const shared_model::interface::Peer &to,
+    MstState const &state,
+    const std::string &sender_key,
+    AsyncGrpcClient<google::protobuf::Empty> &async_call,
+    std::function<void(grpc::Status &, google::protobuf::Empty &)> on_response,
+    MstTransportGrpc::SenderFactory sender_factory) {
   auto client = sender_factory(to);
   transport::MstState protoState;
   protoState.set_source_peer_key(sender_key);
@@ -188,7 +190,9 @@ void sendStateAsyncImpl(const shared_model::interface::Peer &to,
         std::static_pointer_cast<shared_model::proto::Transaction>(tx)
             ->getTransport();
   });
-  async_call.Call([&](auto context, auto cq) {
-    return client->AsyncSendState(context, protoState, cq);
-  });
+  async_call.Call(
+      [&](auto context, auto cq) {
+        return client->AsyncSendState(context, protoState, cq);
+      },
+      std::move(on_response));
 }

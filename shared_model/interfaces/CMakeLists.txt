@@ -70,11 +70,13 @@ if (IROHA_ROOT_PROJECT)
       query_responses/impl/pending_transactions_page_response.cpp
       query_responses/impl/peers_response.cpp
       transaction_responses/impl/tx_response.cpp
+      iroha_internal/batch_meta.cpp
       iroha_internal/transaction_sequence.cpp
       iroha_internal/transaction_batch_impl.cpp
       iroha_internal/transaction_batch_parser_impl.cpp
       iroha_internal/block.cpp
       iroha_internal/transaction_batch.cpp
+      iroha_internal/parse_and_create_batches.cpp
       )
 
   add_library(shared_model_interfaces_factories
@@ -89,8 +91,9 @@ if (IROHA_ROOT_PROJECT)
 endif ()
 
 target_link_libraries(shared_model_interfaces
+    fmt::fmt
     shared_model_utils
     shared_model_cryptography
     common
-    ${Boost_LIBRARIES}
+    Boost::boost
     )

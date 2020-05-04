@@ -6,6 +6,7 @@
 #include "ametsuchi/impl/postgres_wsv_query.hpp"
 
 #include <soci/boost-tuple.h>
+#include "ametsuchi/impl/soci_std_optional.hpp"
 #include "ametsuchi/impl/soci_utils.hpp"
 #include "backend/plain/peer.hpp"
 #include "common/result.hpp"
@@ -18,12 +19,11 @@ namespace {
   getPeersFromSociRowSet(T &&rowset) {
     return iroha::ametsuchi::flatMapValues<
         std::vector<std::shared_ptr<shared_model::interface::Peer>>>(
-        std::forward<T>(rowset), [&](auto &public_key, auto &address) {
+        std::forward<T>(rowset),
+        [&](auto &public_key, auto &address, auto &tls_certificate) {
           return boost::make_optional(
               std::make_shared<shared_model::plain::Peer>(
-                  address,
-                  shared_model::crypto::PublicKey{
-                      shared_model::crypto::Blob::fromHexString(public_key)}));
+                  address, std::move(public_key), tls_certificate));
         });
   }
 }  // namespace
@@ -34,6 +34,7 @@ namespace iroha {
     using shared_model::interface::types::AccountIdType;
     using shared_model::interface::types::AddressType;
     using shared_model::interface::types::PubkeyType;
+    using shared_model::interface::types::TLSCertificateType;
 
     PostgresWsvQuery::PostgresWsvQuery(soci::session &sql,
                                        logger::LoggerPtr log)
@@ -71,27 +72,38 @@ namespace iroha {
 
     boost::optional<std::vector<std::shared_ptr<shared_model::interface::Peer>>>
     PostgresWsvQuery::getPeers() {
-      using T = boost::tuple<std::string, AddressType>;
+      using T = boost::
+          tuple<std::string, AddressType, std::optional<TLSCertificateType>>;
       auto result = execute<T>([&] {
-        return (sql_.prepare << "SELECT public_key, address FROM peer");
+        return (sql_.prepare
+                << "SELECT public_key, address, tls_certificate FROM peer");
       });
 
       return getPeersFromSociRowSet(result);
     }
 
     boost::optional<std::shared_ptr<shared_model::interface::Peer>>
-    PostgresWsvQuery::getPeerByPublicKey(const PubkeyType &public_key) {
-      using T = boost::tuple<std::string, AddressType>;
+    PostgresWsvQuery::getPeerByPublicKey(
+        shared_model::interface::types::PublicKeyHexStringView public_key) {
+      using T = boost::
+          tuple<std::string, AddressType, std::optional<TLSCertificateType>>;
+      std::string target_public_key{public_key};
       auto result = execute<T>([&] {
         return (sql_.prepare << R"(
-            SELECT public_key, address
+            SELECT public_key, address, tls_certificate
             FROM peer
             WHERE public_key = :public_key)",
-                soci::use(public_key.hex(), "public_key"));
+                soci::use(target_public_key, "public_key"));
       });
 
-      return getPeersFromSociRowSet(result) | [](auto &&peers) {
-        return boost::make_optional(std::move(peers.front()));
+      return getPeersFromSociRowSet(result) | [](auto &&peers)
+                 -> boost::optional<
+                     std::shared_ptr<shared_model::interface::Peer>> {
+        if (!peers.empty()) {
+          assert(peers.size() == 1);
+          return boost::make_optional(std::move(peers.front()));
+        }
+        return boost::none;
       };
     }
   }  // namespace ametsuchi

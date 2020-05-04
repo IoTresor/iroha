@@ -6,7 +6,9 @@
 #include "validators/protobuf/proto_transaction_validator.hpp"
 
 #include <gtest/gtest.h>
+#include <optional>
 #include "module/shared_model/validators/validators_fixture.hpp"
+#include "validators/validation_error_output.hpp"
 
 const static std::string rolename = "rolename";
 const static std::string account_id = "account@domain";
@@ -133,13 +135,10 @@ class ValidProtoTxValidatorTest
  */
 TEST_P(ValidProtoTxValidatorTest, ValidTxsTest) {
   auto tx = GetParam();
-
-  auto answer = validator.validate(tx);
-  ASSERT_FALSE(answer.hasErrors()) << answer.reason() << std::endl
-                                   << tx.DebugString();
+  ASSERT_EQ(validator.validate(tx), std::nullopt) << tx.DebugString();
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     ValidProtoTxs,
     ValidProtoTxValidatorTest,
     ::testing::Values(
@@ -150,7 +149,7 @@ INSTANTIATE_TEST_CASE_P(
         generateAddPeerTransaction(valid_pubkey),
         generateCreateRoleTransaction(valid_role_permission),
         generateGrantPermissionTransaction(valid_grantable_permission),
-        generateRevokePermissionTransaction(valid_grantable_permission)), );
+        generateRevokePermissionTransaction(valid_grantable_permission)));
 
 // invalid transaction tests
 
@@ -165,12 +164,10 @@ class InvalidProtoTxValidatorTest
  */
 TEST_P(InvalidProtoTxValidatorTest, InvalidTxssTest) {
   auto tx = GetParam();
-
-  auto answer = validator.validate(tx);
-  ASSERT_TRUE(answer.hasErrors()) << tx.DebugString();
+  ASSERT_TRUE(validator.validate(tx)) << tx.DebugString();
 }
 
-INSTANTIATE_TEST_CASE_P(
+INSTANTIATE_TEST_SUITE_P(
     InvalidProtoTxs,
     InvalidProtoTxValidatorTest,
     ::testing::Values(
@@ -181,4 +178,4 @@ INSTANTIATE_TEST_CASE_P(
         generateAddPeerTransaction(invalid_pubkey),
         generateCreateRoleTransaction(invalid_role_permission),
         generateGrantPermissionTransaction(invalid_grantable_permission),
-        generateRevokePermissionTransaction(invalid_grantable_permission)), );
+        generateRevokePermissionTransaction(invalid_grantable_permission)));

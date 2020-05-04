@@ -18,63 +18,149 @@ namespace shared_model {
 
     struct AlwaysValidFieldValidator final {
       AlwaysValidFieldValidator(std::shared_ptr<ValidatorsConfig>) {}
+
       template <typename... Args>
-      void validateAccountId(Args...) const {}
+      std::optional<ValidationError> validateAccountId(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateAssetId(Args...) const {}
+      std::optional<ValidationError> validateAssetId(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validatePeer(Args...) const {}
+      std::optional<ValidationError> validatePeer(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateAmount(Args...) const {}
+      std::optional<ValidationError> validateAmount(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validatePubkey(Args...) const {}
+      std::optional<ValidationError> validatePubkey(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validatePeerAddress(Args...) const {}
+      std::optional<ValidationError> validatePeerAddress(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateRoleId(Args...) const {}
+      std::optional<ValidationError> validateRoleId(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateAccountName(Args...) const {}
+      std::optional<ValidationError> validateAccountName(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateDomainId(Args...) const {}
+      std::optional<ValidationError> validateDomainId(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateAssetName(Args...) const {}
+      std::optional<ValidationError> validateDomain(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateAccountDetailKey(Args...) const {}
+      std::optional<ValidationError> validateAssetName(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateAccountDetailValue(Args...) const {}
+      std::optional<ValidationError> validateAccountDetailKey(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validatePrecision(Args...) const {}
+      std::optional<ValidationError> validateAccountDetailValue(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateRolePermission(Args...) const {}
+      std::optional<ValidationError> validatePrecision(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateGrantablePermission(Args...) const {}
+      std::optional<ValidationError> validateRolePermission(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateQuorum(Args...) const {}
+      std::optional<ValidationError> validateGrantablePermission(
+          Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateCreatorAccountId(Args...) const {}
+      std::optional<ValidationError> validateQuorum(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateCreatedTime(Args...) const {}
+      std::optional<ValidationError> validateCreatorAccountId(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateCounter(Args...) const {}
+      std::optional<ValidationError> validateAccount(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateSignatures(Args...) const {}
+      std::optional<ValidationError> validateCreatedTime(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateQueryPayloadMeta(Args...) const {}
+      std::optional<ValidationError> validateCounter(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateDescription(Args...) const {}
+      std::optional<ValidationError> validateSignatureForm(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateBatchMeta(Args...) const {}
+      std::optional<ValidationError> validateSignatures(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateHeight(Args...) const {}
+      std::optional<ValidationError> validateQueryPayloadMeta(Args...) const {
+        return std::nullopt;
+      }
       template <typename... Args>
-      void validateHash(Args...) const {}
+      std::optional<ValidationError> validateDescription(Args...) const {
+        return std::nullopt;
+      }
+      template <typename... Args>
+      std::optional<ValidationError> validateBatchMeta(Args...) const {
+        return std::nullopt;
+      }
+      template <typename... Args>
+      std::optional<ValidationError> validateHeight(Args...) const {
+        return std::nullopt;
+      }
+      template <typename... Args>
+      std::optional<ValidationError> validateHash(Args...) const {
+        return std::nullopt;
+      }
+      template <typename... Args>
+      std::optional<ValidationError> validateTxPaginationMeta(Args...) const {
+        return std::nullopt;
+      }
+      template <typename... Args>
+      std::optional<ValidationError> validateAccountAsset(Args...) const {
+        return std::nullopt;
+      }
+      template <typename... Args>
+      std::optional<ValidationError> validateAsset(Args...) const {
+        return std::nullopt;
+      }
+      template <typename... Args>
+      std::optional<ValidationError> validateAccountDetailRecordId(
+          Args...) const {
+        return std::nullopt;
+      }
+      template <typename... Args>
+      std::optional<ValidationError> validateAccountDetailPaginationMeta(
+          Args...) const {
+        return std::nullopt;
+      }
     };
 
     template <typename Model>
     struct AlwaysValidModelValidator final : public AbstractValidator<Model> {
      public:
-      Answer validate(const Model &m) const override {
-        return {};
+      std::optional<ValidationError> validate(const Model &m) const override {
+        return std::nullopt;
       };
     };
 

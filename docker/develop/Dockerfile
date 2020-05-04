@@ -1,52 +1,50 @@
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 # number of concurrent threads during build
 # usage: docker build --build-arg PARALLELISM=8 -t name/name .
 ARG PARALLELISM=1
-ARG CMAKE_BUILD_TYPE=Release
 
 ENV IROHA_HOME /opt/iroha
 ENV IROHA_BUILD /opt/iroha/build
 
 RUN apt-get update && \
-    apt-get -y --no-install-recommends install apt-utils software-properties-common wget; \
-    apt-get -y clean
+    apt-get -y --no-install-recommends install apt-utils software-properties-common wget gpg-agent; \
+    apt-get -y clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # add repos
 RUN set -e; \
     add-apt-repository -y ppa:ubuntu-toolchain-r/test; \
-    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add -; \
-    echo 'deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-6.0 main' >> /etc/apt/sources.list; \
-    echo 'deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-7 main' >> /etc/apt/sources.list; \
+    wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=1 apt-key add -; \
+    echo 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-7 main' >> /etc/apt/sources.list; \
+    echo 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main' >> /etc/apt/sources.list; \
     apt-get update
 
 RUN set -e; \
-    apt-get -y --no-install-recommends install python-software-properties \
-        automake libtool \
-        # compilers (gcc-5, gcc-7, clang-6)
-        build-essential clang-6.0 lldb-6.0 lld-6.0 g++-7 \
-        # dev dependencies
-        libssl-dev zlib1g-dev libcurl4-openssl-dev libc6-dbg golang \
+    apt-get -y --no-install-recommends install libtool \
+        # compilers (gcc-7, gcc-9)
+        build-essential g++-9 ninja-build \
         # CI dependencies
         git ssh tar gzip ca-certificates gnupg \
-        # Pythons
-        python-pip python3-pip python3-setuptools python-dev \
+        # Python3
+        python3-pip python3-setuptools\
         # other
-        curl file gdb gdbserver ccache \
+        curl file gdb gdbserver ccache python3.6-dev \
         gcovr cppcheck doxygen rsync graphviz graphviz-dev unzip vim zip pkg-config; \
     apt-get -y clean
 
-# compiler clang-7 and libc++ only on x86_64, for debug purpose
+# compiler clang-7, clang-9 and libc++ only on x86_64, for debug purpose
 RUN set -e; \
     if [ `uname -m` = "x86_64" ]; then \
       apt-get -y --no-install-recommends install \
-        clang-7 lldb-7 lld-7 libc++-7-dev libc++abi-7-dev clang-format-7; \
+        clang-7 lldb-7 lld-7 libc++-7-dev libc++abi-7-dev clang-format-7 \
+        clang-9; \
       apt-get -y clean; \
     fi
 
-# install cmake 3.11.4
+# install cmake 3.14.0
 RUN set -e; \
-    curl -L -o /tmp/cmake.sh https://github.com/Kitware/CMake/releases/download/v3.11.4/cmake-3.11.4-Linux-x86_64.sh; \
+    curl -L -o /tmp/cmake.sh https://github.com/Kitware/CMake/releases/download/v3.14.0/cmake-3.14.0-Linux-x86_64.sh; \
     sh /tmp/cmake.sh --prefix=/usr/local --skip-license; \
     rm /tmp/cmake.sh
 
@@ -77,17 +75,12 @@ RUN set -e; \
 RUN set -e; \
     apt-get update; \
     apt-get -y install openjdk-8-jre; \
+    rm -rf /var/lib/apt/lists/*; \
     java -version
-
-RUN set -e; \
-    add-apt-repository -y ppa:jonathonf/python-3.6; \
-    apt-get update; \
-    apt-get -y install python3.6-dev
 
 # python bindings dependencies
 RUN set -e; \
-    pip install grpcio_tools pysha3; \
-    pip3 install grpcio_tools pysha3
+    pip3 install grpcio_tools pysha3 iroha==0.0.5.4
 
 # install lcov
 RUN set -e; \

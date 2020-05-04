@@ -17,6 +17,7 @@
 
 #include <rxcpp/operators/rx-take.hpp>
 #include <rxcpp/operators/rx-timeout.hpp>
+#include "framework/stateless_valid_field_helpers.hpp"
 #include "framework/test_logger.hpp"
 #include "framework/test_subscriber.hpp"
 #include "logger/logger_manager.hpp"
@@ -26,7 +27,6 @@
 #include "network/impl/grpc_channel_builder.hpp"
 
 using ::testing::_;
-using ::testing::An;
 using ::testing::InvokeWithoutArgs;
 using ::testing::Return;
 
@@ -47,20 +47,19 @@ auto mk_local_peer(uint64_t num) {
 class FixedCryptoProvider : public MockYacCryptoProvider {
  public:
   explicit FixedCryptoProvider(const std::string &public_key) {
-    std::string key(
-        shared_model::crypto::DefaultCryptoAlgorithmType::kPublicKeyLength, 0);
-    std::copy(public_key.begin(), public_key.end(), key.begin());
-    pubkey = clone(shared_model::crypto::PublicKey(key));
-    data = std::make_unique<shared_model::crypto::Signed>("");
+    pubkey = clone(shared_model::crypto::PublicKey{
+        framework::padPubKeyString(public_key)});
+    data = std::make_unique<shared_model::crypto::Signed>(
+        framework::padSignatureString("signed_data"));
   }
 
   VoteMessage getVote(YacHash hash) override {
     auto vote = MockYacCryptoProvider::getVote(hash);
     auto signature = std::make_shared<MockSignature>();
     EXPECT_CALL(*signature, publicKey())
-        .WillRepeatedly(testing::ReturnRef(*pubkey));
+        .WillRepeatedly(testing::ReturnRefOfCopy(pubkey->hex()));
     EXPECT_CALL(*signature, signedData())
-        .WillRepeatedly(testing::ReturnRef(*data));
+        .WillRepeatedly(testing::ReturnRefOfCopy(data->hex()));
     vote.signature = signature;
     return vote;
   }
@@ -83,7 +82,8 @@ class ConsensusSunnyDayTest : public ::testing::Test {
 
   ConsensusSunnyDayTest()
       : my_peer(mk_local_peer(port + my_num)),
-        my_pub_key(shared_model::crypto::toBinaryString(my_peer->pubkey())) {
+        my_pub_key(iroha::hexstringToBytestringResult(my_peer->pubkey())
+                       .assumeValue()) {
     for (decltype(num_peers) i = 0; i < num_peers; ++i) {
       default_peers.push_back(mk_local_peer(port + i));
     }

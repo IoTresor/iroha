@@ -28,6 +28,7 @@
 #include "datetime/time.hpp"
 #include "framework/common_constants.hpp"
 #include "framework/result_fixture.hpp"
+#include "framework/result_gtest_checkers.hpp"
 #include "framework/test_logger.hpp"
 #include "interfaces/common_objects/types.hpp"
 #include "interfaces/permissions.hpp"
@@ -134,11 +135,9 @@ namespace iroha {
      public:
       QueryExecutorTest()
           : peer{"127.0.0.1",
-                 shared_model::interface::types::PubkeyType{
-                     shared_model::crypto::Blob::fromHexString(
-                         "fa6ce0e0c21ce1ceaf4ba38538c1868185e9feefeafff3e42d94f"
-                         "21800"
-                         "0a5533")}} {
+                 "fa6ce0e0c21ce1ceaf4ba38538c1868185e9feefeafff3e42d94f218000a5"
+                 "533",
+                 std::nullopt} {
         role_permissions.set(
             shared_model::interface::permissions::Role::kAddMySignatory);
         grantable_permission =
@@ -159,12 +158,17 @@ namespace iroha {
             std::make_shared<shared_model::proto::ProtoCommonObjectsFactory<
                 shared_model::validation::FieldValidator>>(
                 iroha::test::kTestsValidatorsConfig);
-        query_executor = storage;
         executor = std::make_unique<PostgresCommandExecutor>(
             std::make_unique<soci::session>(*soci::factory_postgresql(),
                                             pgopt_),
             perm_converter);
         pending_txs_storage = std::make_shared<MockPendingTransactionStorage>();
+
+        auto query_executor_result = storage->createQueryExecutor(
+            pending_txs_storage, query_response_factory);
+        IROHA_ASSERT_RESULT_VALUE(query_executor_result)
+            << "Failed to create a QueryExecutor.";
+        query_executor_ = std::move(query_executor_result).assumeValue();
 
         execute(
             *mock_command_factory->constructCreateRole(role, role_permissions),
@@ -189,11 +193,7 @@ namespace iroha {
       }
 
       auto executeQuery(shared_model::interface::Query &query) {
-        return query_executor->createQueryExecutor(pending_txs_storage,
-                                                   query_response_factory)
-            | [&query](const auto &executor) {
-                return executor->validateAndExecute(query, false);
-              };
+        return query_executor_->validateAndExecute(query, false);
       }
 
       template <typename CommandType>
@@ -295,7 +295,7 @@ namespace iroha {
 
       std::unique_ptr<shared_model::interface::Command> command;
 
-      std::shared_ptr<QueryExecutorFactory> query_executor;
+      std::shared_ptr<QueryExecutor> query_executor_;
       std::unique_ptr<CommandExecutor> executor;
       std::shared_ptr<MockPendingTransactionStorage> pending_txs_storage;
 
@@ -326,11 +326,7 @@ namespace iroha {
       addAllPermsWithoutRoot();
       auto blocks_query =
           TestBlocksQueryBuilder().creatorAccountId(account_id).build();
-      ASSERT_TRUE(query_executor->createQueryExecutor(pending_txs_storage,
-                                                      query_response_factory)
-                  | [&blocks_query](const auto &executor) {
-                      return executor->validate(blocks_query, false);
-                    });
+      ASSERT_TRUE(query_executor_->validate(blocks_query, false));
     }
 
     /**
@@ -341,11 +337,7 @@ namespace iroha {
     TEST_F(BlocksQueryExecutorTest, BlocksQueryExecutorTestInvalid) {
       auto blocks_query =
           TestBlocksQueryBuilder().creatorAccountId(account_id).build();
-      ASSERT_FALSE(query_executor->createQueryExecutor(pending_txs_storage,
-                                                       query_response_factory)
-                   | [&blocks_query](const auto &executor) {
-                       return executor->validate(blocks_query, false);
-                     });
+      ASSERT_FALSE(query_executor_->validate(blocks_query, false));
     }
 
     /**
@@ -357,161 +349,7 @@ namespace iroha {
       addPerms({shared_model::interface::permissions::Role::kRoot});
       auto blocks_query =
           TestBlocksQueryBuilder().creatorAccountId(account_id).build();
-      ASSERT_TRUE(query_executor->createQueryExecutor(pending_txs_storage,
-                                                      query_response_factory)
-                  | [&blocks_query](const auto &executor) {
-                      return executor->validate(blocks_query, false);
-                    });
-    }
-
-    class GetAccountExecutorTest : public QueryExecutorTest {
-     public:
-      void SetUp() override {
-        QueryExecutorTest::SetUp();
-        createDefaultAccount();
-      }
-    };
-
-    /**
-     * @given initialized storage, permission to his/her account
-     * @when get account information
-     * @then Return account
-     */
-    TEST_F(GetAccountExecutorTest, ValidMyAccount) {
-      addPerms({shared_model::interface::permissions::Role::kGetMyAccount});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAccount(account_id)
-                       .build();
-      auto result = executeQuery(query);
-      checkSuccessfulResult<shared_model::interface::AccountResponse>(
-          std::move(result), [](const auto &cast_resp) {
-            ASSERT_EQ(cast_resp.account().accountId(), account_id);
-          });
-    }
-
-    /**
-     * @given initialized storage, global permission
-     * @when get account information about other user
-     * @then Return account
-     */
-    TEST_F(GetAccountExecutorTest, ValidAllAccounts) {
-      addPerms({shared_model::interface::permissions::Role::kGetAllAccounts});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAccount(another_account_id)
-                       .build();
-      auto result = executeQuery(query);
-      checkSuccessfulResult<shared_model::interface::AccountResponse>(
-          std::move(result), [](const auto &cast_resp) {
-            ASSERT_EQ(cast_resp.account().accountId(), another_account_id);
-          });
-    }
-
-    /**
-     * @given initialized storage, domain permission
-     * @when get account information about other user in the same domain
-     * @then Return account
-     */
-    TEST_F(GetAccountExecutorTest, ValidDomainAccount) {
-      addPerms(
-          {shared_model::interface::permissions::Role::kGetDomainAccounts});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAccount(account_id2)
-                       .build();
-      auto result = executeQuery(query);
-      checkSuccessfulResult<shared_model::interface::AccountResponse>(
-          std::move(result), [](const auto &cast_resp) {
-            ASSERT_EQ(cast_resp.account().accountId(), account_id2);
-          });
-    }
-
-    /**
-     * @given initialized storage, domain permission
-     * @when get account information about other user in the other domain
-     * @then Return error
-     */
-    TEST_F(GetAccountExecutorTest, InvalidDifferentDomain) {
-      addPerms(
-          {shared_model::interface::permissions::Role::kGetDomainAccounts});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAccount(another_account_id)
-                       .build();
-      auto result = executeQuery(query);
-      checkStatefulError<shared_model::interface::StatefulFailedErrorResponse>(
-          std::move(result), kNoPermissions);
-    }
-
-    /**
-     * @given initialized storage, permission
-     * @when get account information about non existing account
-     * @then Return error
-     */
-    TEST_F(GetAccountExecutorTest, InvalidNoAccount) {
-      addPerms({shared_model::interface::permissions::Role::kGetAllAccounts});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAccount("some@domain")
-                       .build();
-      auto result = executeQuery(query);
-      checkStatefulError<shared_model::interface::NoAccountErrorResponse>(
-          std::move(result), kNoStatefulError);
-    }
-
-    /**
-     * @given initialized storage, root permission
-     * @when get account information
-     * @then Return account
-     */
-    TEST_F(GetAccountExecutorTest, ValidMyAccountWithRoot) {
-      addPerms({shared_model::interface::permissions::Role::kRoot});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAccount(account_id)
-                       .build();
-      auto result = executeQuery(query);
-      checkSuccessfulResult<shared_model::interface::AccountResponse>(
-          std::move(result), [](const auto &cast_resp) {
-            ASSERT_EQ(cast_resp.account().accountId(), account_id);
-          });
-    }
-
-    /**
-     * @given initialized storage, root permission
-     * @when get account information about other user
-     * @then Return account
-     */
-    TEST_F(GetAccountExecutorTest, ValidAllAccountsWithRoot) {
-      addPerms({shared_model::interface::permissions::Role::kRoot});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAccount(another_account_id)
-                       .build();
-      auto result = executeQuery(query);
-      checkSuccessfulResult<shared_model::interface::AccountResponse>(
-          std::move(result), [](const auto &cast_resp) {
-            ASSERT_EQ(cast_resp.account().accountId(), another_account_id);
-          });
-    }
-
-    /**
-     * @given initialized storage, root permission
-     * @when get account information about other user in the same domain
-     * @then Return account
-     */
-    TEST_F(GetAccountExecutorTest, ValidDomainAccountWithRoot) {
-      addPerms({shared_model::interface::permissions::Role::kRoot});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAccount(account_id2)
-                       .build();
-      auto result = executeQuery(query);
-      checkSuccessfulResult<shared_model::interface::AccountResponse>(
-          std::move(result), [](const auto &cast_resp) {
-            ASSERT_EQ(cast_resp.account().accountId(), account_id2);
-          });
+      ASSERT_TRUE(query_executor_->validate(blocks_query, false));
     }
 
     // --------------| GetBlock tests |---------------------------->8 ----------
@@ -760,93 +598,6 @@ namespace iroha {
           });
     }
 
-    class GetAssetInfoExecutorTest : public QueryExecutorTest {
-     public:
-      void SetUp() override {
-        QueryExecutorTest::SetUp();
-      }
-
-      void createAsset() {
-        execute(
-            *mock_command_factory->constructCreateAsset("coin", domain_id, 1),
-            true);
-      }
-      const std::string asset_id = "coin#domain";
-    };
-
-    /**
-     * @given initialized storage, permission to read all system assets
-     * @when get asset info
-     * @then Return asset
-     */
-    TEST_F(GetAssetInfoExecutorTest, Valid) {
-      addPerms({shared_model::interface::permissions::Role::kReadAssets});
-      createAsset();
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAssetInfo(asset_id)
-                       .build();
-      auto result = executeQuery(query);
-      checkSuccessfulResult<shared_model::interface::AssetResponse>(
-          std::move(result), [this](const auto &cast_resp) {
-            ASSERT_EQ(cast_resp.asset().assetId(), asset_id);
-            ASSERT_EQ(cast_resp.asset().domainId(), domain_id);
-            ASSERT_EQ(cast_resp.asset().precision(), 1);
-          });
-    }
-
-    /**
-     * @given initialized storage, all permissions
-     * @when get asset info of non existing asset
-     * @then Error
-     */
-    TEST_F(GetAssetInfoExecutorTest, InvalidNoAsset) {
-      addPerms({shared_model::interface::permissions::Role::kReadAssets});
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAssetInfo("some#domain")
-                       .build();
-      auto result = executeQuery(query);
-      checkStatefulError<shared_model::interface::NoAssetErrorResponse>(
-          std::move(result), kNoStatefulError);
-    }
-
-    /**
-     * @given initialized storage, no permissions
-     * @when get asset info
-     * @then Error
-     */
-    TEST_F(GetAssetInfoExecutorTest, Invalid) {
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAssetInfo(asset_id)
-                       .build();
-      auto result = executeQuery(query);
-      checkStatefulError<shared_model::interface::StatefulFailedErrorResponse>(
-          std::move(result), kNoPermissions);
-    }
-
-    /**
-     * @given initialized storage, root permission
-     * @when get asset info
-     * @then Return asset
-     */
-    TEST_F(GetAssetInfoExecutorTest, ValidWithRoot) {
-      addPerms({shared_model::interface::permissions::Role::kRoot});
-      createAsset();
-      auto query = TestQueryBuilder()
-                       .creatorAccountId(account_id)
-                       .getAssetInfo(asset_id)
-                       .build();
-      auto result = executeQuery(query);
-      checkSuccessfulResult<shared_model::interface::AssetResponse>(
-          std::move(result), [this](const auto &cast_resp) {
-            ASSERT_EQ(cast_resp.asset().assetId(), asset_id);
-            ASSERT_EQ(cast_resp.asset().domainId(), domain_id);
-            ASSERT_EQ(cast_resp.asset().precision(), 1);
-          });
-    }
-
     class GetTransactionsExecutorTest : public QueryExecutorTest {
      public:
       void SetUp() override {
@@ -959,7 +710,7 @@ namespace iroha {
 
       auto queryPage(
           types::TransactionsNumberType page_size,
-          const boost::optional<types::HashType> &first_hash = boost::none) {
+          const std::optional<types::HashType> &first_hash = std::nullopt) {
         auto query = Impl::makeQuery(page_size, first_hash);
         return executeQuery(query);
       }
@@ -977,8 +728,8 @@ namespace iroha {
       void generalTransactionsPageResponseCheck(
           const TransactionsPageResponse &tx_page_response,
           types::TransactionsNumberType page_size,
-          const boost::optional<types::HashType> &first_hash =
-              boost::none) const {
+          const std::optional<types::HashType> &first_hash =
+              std::nullopt) const {
         EXPECT_EQ(tx_page_response.allTransactionsSize(), tx_hashes_.size())
             << "Wrong `total transactions' number.";
         auto resp_tx_hashes = tx_page_response.transactions()
@@ -1011,7 +762,7 @@ namespace iroha {
               << "Wrong transaction returned.";
         }
         if (page_end == tx_hashes_.cend()) {
-          EXPECT_EQ(tx_page_response.nextTxHash(), boost::none)
+          EXPECT_EQ(tx_page_response.nextTxHash(), std::nullopt)
               << "Next transaction hash value must be unset.";
         } else {
           EXPECT_TRUE(tx_page_response.nextTxHash());
@@ -1053,7 +804,7 @@ namespace iroha {
 
       static shared_model::proto::Query makeQuery(
           types::TransactionsNumberType page_size,
-          const boost::optional<types::HashType> &first_hash = boost::none) {
+          const std::optional<types::HashType> &first_hash = std::nullopt) {
         return TestQueryBuilder()
             .creatorAccountId(account_id)
             .createdTime(iroha::time::now())
@@ -1106,7 +857,7 @@ namespace iroha {
 
       static shared_model::proto::Query makeQuery(
           types::TransactionsNumberType page_size,
-          const boost::optional<types::HashType> &first_hash = boost::none) {
+          const std::optional<types::HashType> &first_hash = std::nullopt) {
         return TestQueryBuilder()
             .creatorAccountId(account_id)
             .createdTime(iroha::time::now())

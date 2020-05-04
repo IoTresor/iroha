@@ -8,14 +8,14 @@ target_link_libraries(executor_fixture
 
 add_library(executor_fixture_param executor_fixture_param.cpp)
 target_link_libraries(executor_fixture_param
-    gtest::main
+    GTest::gtest
     )
 
 add_library(executor_fixture_param_postgres executor_fixture_param_postgres.cpp)
 target_link_libraries(executor_fixture_param_postgres
     ametsuchi
     executor_fixture_param
-    gmock::main
+    GTest::gmock
     shared_model_proto_backend
     test_db_manager
     test_logger
@@ -28,12 +28,20 @@ target_link_libraries(executor_fixture_param_provider
 
 add_library(account_detail_checker account_detail_checker.cpp)
 target_link_libraries(account_detail_checker
-    gtest::main
-    rapidjson
+    GTest::gtest
+    RapidJSON::rapidjson
+    )
+
+add_library(command_permission_test command_permission_test.cpp)
+target_link_libraries(command_permission_test
+    executor_fixture
+    executor_fixture_param_provider
+    common_test_constants
     )
 
 addtest(add_asset_qty_test add_asset_qty_test.cpp)
 target_link_libraries(add_asset_qty_test
+    command_permission_test
     common_test_constants
     executor_fixture
     executor_fixture_param_provider
@@ -41,6 +49,7 @@ target_link_libraries(add_asset_qty_test
 
 addtest(add_signatory_test add_signatory_test.cpp)
 target_link_libraries(add_signatory_test
+    command_permission_test
     common_test_constants
     executor_fixture
     executor_fixture_param_provider
@@ -48,6 +57,14 @@ target_link_libraries(add_signatory_test
 
 addtest(create_account_test create_account_test.cpp)
 target_link_libraries(create_account_test
+    command_permission_test
+    executor_fixture
+    executor_fixture_param_provider
+    )
+
+addtest(create_role_test create_role_test.cpp)
+target_link_libraries(create_role_test
+    command_permission_test
     executor_fixture
     executor_fixture_param_provider
     )
@@ -69,6 +86,23 @@ target_link_libraries(get_account_detail_test
     query_permission_test
     )
 
+addtest(get_asset_info_test get_asset_info_test.cpp)
+target_link_libraries(get_asset_info_test
+    executor_fixture
+    executor_fixture_param_provider
+    common_test_constants
+    query_permission_test
+    )
+
+addtest(get_account_test get_account_test.cpp)
+target_link_libraries(get_account_test
+    account_detail_checker
+    executor_fixture
+    executor_fixture_param_provider
+    common_test_constants
+    query_permission_test
+    )
+
 add_library(query_permission_test query_permission_test.cpp)
 target_link_libraries(query_permission_test
     executor_fixture
@@ -79,6 +113,7 @@ target_link_libraries(query_permission_test
 addtest(set_account_detail_test set_account_detail_test.cpp)
 target_link_libraries(set_account_detail_test
     account_detail_checker
+    command_permission_test
     common_test_constants
     executor_fixture
     executor_fixture_param_provider
@@ -90,4 +125,12 @@ target_link_libraries(get_signatories_test
     executor_fixture_param_provider
     common_test_constants
     query_permission_test
+    )
+
+addtest(remove_signatory_test remove_signatory_test.cpp)
+target_link_libraries(remove_signatory_test
+    command_permission_test
+    common_test_constants
+    executor_fixture
+    executor_fixture_param_provider
     )

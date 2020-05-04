@@ -8,14 +8,23 @@
 using namespace shared_model;
 using namespace shared_model::plain;
 
-Peer::Peer(const interface::types::AddressType &address,
-           const interface::types::PubkeyType &public_key)
-    : address_(address), public_key_(public_key) {}
+Peer::Peer(
+    const interface::types::AddressType &address,
+    std::string public_key_hex,
+    const std::optional<interface::types::TLSCertificateType> &tls_certificate)
+    : address_(address),
+      public_key_hex_(std::move(public_key_hex)),
+      tls_certificate_(tls_certificate) {}
 
 const shared_model::interface::types::AddressType &Peer::address() const {
   return address_;
 }
 
-const shared_model::interface::types::PubkeyType &Peer::pubkey() const {
-  return public_key_;
+const std::string &Peer::pubkey() const {
+  return public_key_hex_;
+}
+
+const std::optional<shared_model::interface::types::TLSCertificateType>
+    &Peer::tlsCertificate() const {
+  return tls_certificate_;
 }

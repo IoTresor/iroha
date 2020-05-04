@@ -38,6 +38,8 @@ We have documentation in several languages available and you are welcome to cont
 | **Korean** <br> [![Documentation Status](https://readthedocs.org/projects/iroha-ko/badge/?version=latest)](https://iroha.readthedocs.io/ko/latest/?badge=latest) </br> | **Dutch** <br> [![Documentation Status](https://readthedocs.org/projects/iroha-nl/badge/?version=latest)](https://iroha.readthedocs.io/nl/latest/?badge=latest) </br> | **Portuguese** <br> [![Documentation Status](https://readthedocs.org/projects/iroha-pt/badge/?version=latest)](https://iroha.readthedocs.io/pt/latest/?badge=latest) </br> | **Russian** <br> [![Documentation Status](https://readthedocs.org/projects/iroha-ru/badge/?version=latest)](https://iroha.readthedocs.io/ru/latest/?badge=latest) </br> | **Ukrainian** <br> [![Documentation Status](https://readthedocs.org/projects/iroha-uk/badge/?version=latest)](https://iroha.readthedocs.io/uk/latest/?badge=latest) </br> | **Simplified Chinese** <br> [![Documentation Status](https://readthedocs.org/projects/iroha-zh/badge/?version=latest)](https://iroha.readthedocs.io/zh_CN/latest/?badge=latest) </br> |
 
 </center>
+
+> We are currently researching better ideas for translation platforms. That is why the documentation in outdated at the moment. Please, refer to the English documentation for now. 
  
 ### How to explore Iroha really fast?
 
@@ -54,6 +56,9 @@ Yes, in [Java](https://github.com/hyperledger/iroha-java), [Python](https://gith
 ### Are there any example applications?
 
 [Android point app](https://github.com/hyperledger/iroha-android/tree/master/iroha-android-sample) and [JavaScript wallet](https://github.com/soramitsu/iroha-wallet-js).
+
+Also do not forget to check out [The Borsello App](https://github.com/claudiocandio/borsello) – it is a wallet for Android & iOS along with a web browser application contributed by [Claudio](https://github.com/claudiocandio).
+It is based on JS Wallet but is up-to-date.
 
 ### Want to help us develop Iroha?
 

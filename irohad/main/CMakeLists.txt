@@ -7,12 +7,11 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
 
 add_library(server_runner
     server_runner.cpp
-    tls_keypair.cpp
     )
 target_link_libraries(server_runner
     logger
-    grpc++
-    boost
+    gRPC::grpc++
+    Boost::boost
     common
     )
 
@@ -48,6 +47,9 @@ add_library(application
     )
 target_link_libraries(application
     PRIVATE
+    peer_tls_certificates_providers
+    permutation_generator
+    tls_credentials
     yac
     yac_transport
     PUBLIC
@@ -80,7 +82,7 @@ target_link_libraries(irohad
     application
     raw_block_loader
     gflags
-    rapidjson
+    RapidJSON::rapidjson
     keys_manager
     common
     iroha_conf_loader
@@ -94,8 +96,9 @@ add_library(iroha_conf_loader iroha_conf_loader.cpp)
 target_link_libraries(iroha_conf_loader
     iroha_conf_literals
     logger_manager
-    rapidjson
-)
+    libs_files
+    RapidJSON::rapidjson
+    )
 
 add_library(iroha_conf_literals iroha_conf_literals.cpp)
 target_link_libraries(iroha_conf_literals

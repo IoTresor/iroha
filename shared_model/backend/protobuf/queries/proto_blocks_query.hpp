@@ -31,8 +31,9 @@ namespace shared_model {
       // ------------------------| Signable override  |-------------------------
       interface::types::SignatureRangeType signatures() const override;
 
-      bool addSignature(const crypto::Signed &signed_blob,
-                        const crypto::PublicKey &public_key) override;
+      bool addSignature(
+          interface::types::SignedHexStringView signed_blob,
+          interface::types::PublicKeyHexStringView public_key) override;
 
       const interface::types::HashType &hash() const override;
 
@@ -44,7 +45,7 @@ namespace shared_model {
       // ------------------------------| fields |-------------------------------
       TransportType proto_;
 
-      const interface::types::BlobType blob_;
+      interface::types::BlobType blob_;
 
       const interface::types::BlobType payload_;
 

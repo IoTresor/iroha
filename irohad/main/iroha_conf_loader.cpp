@@ -11,10 +11,11 @@
 
 #include <rapidjson/document.h>
 #include <rapidjson/error/en.h>
-#include <rapidjson/istreamwrapper.h>
 #include <rapidjson/rapidjson.h>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/range/adaptor/map.hpp>
+#include "common/files.hpp"
+#include "common/result.hpp"
 #include "cryptography/public_key.hpp"
 #include "main/iroha_conf_literals.hpp"
 #include "torii/tls_params.hpp"
@@ -28,6 +29,10 @@ static constexpr size_t kBadJsonPrintOffsset = 5;
 
 static_assert(kBadJsonPrintOffsset <= kBadJsonPrintLength,
               "The place of error is out of the printed string boundaries!");
+
+class JsonDeserializerException : public std::runtime_error {
+  using std::runtime_error::runtime_error;
+};
 
 /**
  * A class for reading a structure from a JSON node.
@@ -250,7 +255,7 @@ class JsonDeserializerImpl {
    */
   inline void assert_fatal(bool condition, std::string error) {
     if (!condition) {
-      throw std::runtime_error(error);
+      throw JsonDeserializerException(error);
     }
   }
 
@@ -336,15 +341,31 @@ JsonDeserializerImpl::getVal<std::unique_ptr<shared_model::interface::Peer>>(
   getValByKey(path, address, obj, config_members::Address);
   std::string public_key_str;
   getValByKey(path, public_key_str, obj, config_members::PublicKey);
+  boost::optional<std::string> tls_certificate_path =
+      getOptValByKey<std::string>(
+          path, obj, config_members::TlsCertificatePath);
+
+  std::optional<std::string> tls_certificate_str;
+  if (tls_certificate_path) {
+    iroha::readTextFile(*tls_certificate_path)
+        .match([&tls_certificate_str](
+                   const auto &v) { tls_certificate_str = v.value; },
+               [this, &path](const auto &e) {
+                 this->assert_fatal(false,
+                                    "Error reading file specified in " + path
+                                        + ": " + e.error);
+               });
+  }
+
   common_objects_factory_
-      ->createPeer(
-          address,
-          shared_model::crypto::PublicKey(
-              shared_model::crypto::Blob::fromHexString(public_key_str)))
+      ->createPeer(address,
+                   shared_model::interface::types::PublicKeyHexStringView{
+                       public_key_str},
+                   tls_certificate_str)
       .match([&dest](auto &&v) { dest = std::move(v.value); },
              [&path](const auto &error) {
-               throw std::runtime_error("Failed to create a peer at '" + path
-                                        + "': " + error.error);
+               throw JsonDeserializerException("Failed to create a peer at '"
+                                               + path + "': " + error.error);
              });
 }
 
@@ -357,6 +378,40 @@ inline void JsonDeserializerImpl::getVal<iroha::torii::TlsParams>(
   const auto obj = src.GetObject();
   getValByKey(path, dest.port, obj, config_members::Port);
   getValByKey(path, dest.key_path, obj, config_members::KeyPairPath);
+}
+
+template <>
+inline void JsonDeserializerImpl::getVal<IrohadConfig::InterPeerTls>(
+    const std::string &path,
+    IrohadConfig::InterPeerTls &dest,
+    const rapidjson::Value &src) {
+  assert_fatal(src.IsObject(), path + " must be a dictionary");
+  const auto obj = src.GetObject();
+  getValByKey(path, dest.my_tls_creds_path, obj, config_members::KeyPairPath);
+  getValByKey(
+      path, dest.peer_certificates, obj, config_members::PeerCertProvider);
+}
+
+template <>
+inline void
+JsonDeserializerImpl::getVal<IrohadConfig::InterPeerTls::PeerCertProvider>(
+    const std::string &path,
+    IrohadConfig::InterPeerTls::PeerCertProvider &dest,
+    const rapidjson::Value &src) {
+  assert_fatal(src.IsObject(), path + " must be a dictionary");
+  const auto obj = src.GetObject();
+  std::string type;
+  getValByKey(path, type, obj, config_members::Type);
+  if (type == config_members::RootCert) {
+    IrohadConfig::InterPeerTls::RootCert root_cert;
+    getValByKey(path, root_cert.path, obj, config_members::Path);
+    dest = std::move(root_cert);
+  } else if (type == config_members::InLengerCerts) {
+    dest = IrohadConfig::InterPeerTls::FromWsv{};
+  } else {
+    throw JsonDeserializerException{std::string{
+        "Unimplemented peer certificate provider type: '" + type + "'"}};
+  }
 }
 
 template <>
@@ -385,6 +440,7 @@ inline void JsonDeserializerImpl::getVal<IrohadConfig>(
   getValByKey(path, dest.block_store_path, obj, config_members::BlockStorePath);
   getValByKey(path, dest.torii_port, obj, config_members::ToriiPort);
   getValByKey(path, dest.torii_tls_params, obj, config_members::ToriiTlsParams);
+  getValByKey(path, dest.inter_peer_tls, obj, config_members::InterPeerTls);
   getValByKey(path, dest.internal_port, obj, config_members::InternalPort);
   getValByKey(path, dest.pg_opt, obj, config_members::PgOpt);
   getValByKey(path, dest.database_config, obj, config_members::DbConfig);
@@ -409,36 +465,38 @@ inline void JsonDeserializerImpl::getVal<IrohadConfig>(
 
 std::string reportJsonParsingError(const rapidjson::Document &doc,
                                    const std::string &conf_path,
-                                   std::istream &input) {
+                                   const std::string &text) {
   const size_t error_offset = doc.GetErrorOffset();
   // This ensures the unsigned string beginning position does not cross zero:
   const size_t print_offset =
       std::max(error_offset, kBadJsonPrintOffsset) - kBadJsonPrintOffsset;
-  input.seekg(print_offset);
-  std::string json_error_buf(kBadJsonPrintLength, 0);
-  input.readsome(&json_error_buf[0], kBadJsonPrintLength);
+  std::string json_error_buf = text.substr(print_offset, kBadJsonPrintLength);
   return "JSON parse error [" + conf_path + "] " + "(near `" + json_error_buf
       + "'): " + std::string(rapidjson::GetParseError_En(doc.GetParseError()));
 }
 
 // TODO mboldyrev 2019.05.06 IR-465 make config loader testable
-IrohadConfig parse_iroha_config(
+iroha::expected::Result<IrohadConfig, std::string> parse_iroha_config(
     const std::string &conf_path,
     std::shared_ptr<shared_model::interface::CommonObjectsFactory>
         common_objects_factory) {
-  const rapidjson::Document doc{[&conf_path] {
-    rapidjson::Document doc;
-    std::ifstream ifs_iroha(conf_path);
-    rapidjson::IStreamWrapper isw(ifs_iroha);
-    doc.ParseStream(isw);
-    if (doc.HasParseError()) {
-      throw std::runtime_error(
-          reportJsonParsingError(doc, conf_path, ifs_iroha));
-    }
-    return doc;
-  }()};
+  return iroha::readTextFile(conf_path) | [&](const auto &text)
+             -> iroha::expected::Result<IrohadConfig, std::string> {
+    const rapidjson::Document doc{[&text]() {
+      rapidjson::Document doc;
+      doc.Parse(text.data(), text.size());
+      return doc;
+    }()};
 
-  JsonDeserializerImpl parser(common_objects_factory);
-  IrohadConfig config = parser.deserialize<IrohadConfig>(doc);
-  return config;
+    if (doc.HasParseError()) {
+      return reportJsonParsingError(doc, conf_path, text);
+    }
+
+    JsonDeserializerImpl parser(common_objects_factory);
+    try {
+      return parser.deserialize<IrohadConfig>(doc);
+    } catch (JsonDeserializerException e) {
+      return e.what();
+    };
+  };
 }

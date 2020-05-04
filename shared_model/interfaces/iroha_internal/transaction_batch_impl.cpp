@@ -45,17 +45,16 @@ namespace shared_model {
     std::string TransactionBatchImpl::toString() const {
       return detail::PrettyStringBuilder()
           .init("Batch")
-          .append("reducedHash", reducedHash().toString())
-          .append("hasAllSignatures", hasAllSignatures() ? "true" : "false")
-          .append("transactions")
-          .appendAll(transactions(), [](auto &tx) { return tx->toString(); })
+          .appendNamed("reducedHash", reducedHash())
+          .appendNamed("hasAllSignatures", hasAllSignatures())
+          .appendNamed("transactions", transactions())
           .finalize();
     }
 
     bool TransactionBatchImpl::addSignature(
         size_t number_of_tx,
-        const shared_model::crypto::Signed &signed_blob,
-        const shared_model::crypto::PublicKey &public_key) {
+        types::SignedHexStringView signed_blob,
+        types::PublicKeyHexStringView public_key) {
       if (number_of_tx >= transactions_.size()) {
         return false;
       } else {

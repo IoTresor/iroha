@@ -57,6 +57,7 @@
 #include "torii/command_client.hpp"
 #include "torii/query_client.hpp"
 #include "torii/status_bus.hpp"
+#include "validators/default_validator.hpp"
 #include "validators/protobuf/proto_proposal_validator.hpp"
 
 using namespace shared_model::crypto;
@@ -183,7 +184,7 @@ namespace integration_framework {
         batch_parser_(std::make_shared<
                       shared_model::interface::TransactionBatchParserImpl>()),
         batch_validator_(
-            std::make_shared<shared_model::validation::BatchValidator>(
+            std::make_shared<shared_model::validation::DefaultBatchValidator>(
                 iroha::test::kTestsValidatorsConfig)),
         transaction_batch_factory_(
             std::make_shared<
@@ -356,11 +357,13 @@ namespace integration_framework {
       const shared_model::crypto::Keypair &keypair) {
     log_->info("init state");
     my_key_ = keypair;
-    this_peer_ =
-        framework::expected::val(common_objects_factory_->createPeer(
-                                     getAddress(), keypair.publicKey()))
-            .value()
-            .value;
+    using shared_model::interface::types::PublicKeyHexStringView;
+    this_peer_ = framework::expected::val(
+                     common_objects_factory_->createPeer(
+                         getAddress(),
+                         PublicKeyHexStringView{keypair.publicKey().hex()}))
+                     .value()
+                     .value;
     iroha_instance_->initPipeline(keypair, maximum_proposal_size_);
     log_->info("created pipeline");
   }

@@ -21,7 +21,8 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
-    'm2r'
+    'm2r',
+    'sphinx_extensions.iroha_permissions'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -70,6 +71,9 @@ html_sidebars = {
 html_theme_options = {
     'navigation_depth': 3, #default is 4 - changed for better looks
 }
+
+# Additional files
+html_extra_path = ['_extra']
 
 # -- Options for HTMLHelp output ------------------------------------------
 
@@ -143,3 +147,7 @@ texinfo_documents = [
      author, project, description,
      'C++'),
 ]
+
+
+# -- Options for iroha_permissions extension ------------------------------
+iroha_permissions_glossary_path = 'concepts_architecture/glossary.rst'

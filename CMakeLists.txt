@@ -1,7 +1,7 @@
 # Copyright Soramitsu Co., Ltd. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-cmake_minimum_required(VERSION 3.11.4)
+cmake_minimum_required(VERSION 3.14.0)
 
 find_program(CCACHE_PROGRAM ccache)
 if(CCACHE_PROGRAM)
@@ -11,9 +11,11 @@ endif()
 
 PROJECT(iroha C CXX)
 
+SET(CMAKE_CXX_STANDARD 17)
+
 SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 if (NOT MSVC)
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -Wall -fdiagnostics-color=always")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fdiagnostics-color=always")
   SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wno-error=deprecated-declarations")
   SET(CMAKE_CXX_FLAGS_DEBUG   "${CMAKE_CXX_FLAGS_DEBUG} -g -Wextra -Wno-unused-parameter -Wno-deprecated-declarations -O0")
 endif()
@@ -96,7 +98,10 @@ set(DEPS_CMAKE_ARGS
     -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
     -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
     -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
-    -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS})
+    -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
+    -G${CMAKE_GENERATOR}
+    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+    )
 
 SET(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
 
@@ -109,8 +114,6 @@ option(PACKAGE_ZIP           "Create ZIP package"                       OFF)
 option(PACKAGE_TGZ           "Create TGZ package"                       OFF)
 option(PACKAGE_RPM           "Create RPM package"                       OFF)
 option(PACKAGE_DEB           "Create DEB package"                       OFF)
-option(ENABLE_LIBS_PACKAGING "Enable libs packaging"                    ON)
-option(USE_LIBIROHA          "Use external model library"               OFF)
 option(USE_LIBURSA           "Use Hyperledger Ursa cryptography"        OFF)
 option(SANITIZE_THREAD       "Build with thread sanitizer"              OFF)
 option(SANITIZE_ADDRESS      "Build with address sanitizer"             OFF)
@@ -147,7 +150,6 @@ message(STATUS "-DPACKAGE_ZIP=${PACKAGE_ZIP}")
 message(STATUS "-DPACKAGE_TGZ=${PACKAGE_TGZ}")
 message(STATUS "-DPACKAGE_RPM=${PACKAGE_RPM}")
 message(STATUS "-DPACKAGE_DEB=${PACKAGE_DEB}")
-message(STATUS "-DENABLE_LIBS_PACKAGING=${ENABLE_LIBS_PACKAGING}")
 message(STATUS "-DSANITIZE_THREAD=${SANITIZE_THREAD}")
 message(STATUS "-DSANITIZE_ADDRESS=${SANITIZE_ADDRESS}")
 message(STATUS "-DSANITIZE_MEMORY=${SANITIZE_MEMORY}")
@@ -157,14 +159,10 @@ set(IROHA_SCHEMA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/schema")
 set(SM_SCHEMA_DIR "${PROJECT_SOURCE_DIR}/shared_model/schema")
 set(SCHEMA_OUT_DIR ${CMAKE_BINARY_DIR}/schema)
 include_directories(
+  ${PROJECT_SOURCE_DIR}/shared_model
   ${PROJECT_SOURCE_DIR}/irohad
   ${PROJECT_SOURCE_DIR}/libs
 )
-
-# fallback to local shared_model
-if (NOT USE_LIBIROHA)
-  include_directories(${PROJECT_SOURCE_DIR}/shared_model)
-endif()
 
 SET(IROHA_ROOT_PROJECT ON)
 
@@ -185,11 +183,7 @@ add_subdirectory(schema)
 add_subdirectory(libs)
 add_subdirectory(irohad)
 add_subdirectory(iroha-cli)
-
-# fallback to local shared_model
-if (NOT USE_LIBIROHA)
-  add_subdirectory(shared_model)
-endif()
+add_subdirectory(shared_model)
 
 if(TESTING)
   enable_testing()

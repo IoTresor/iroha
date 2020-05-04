@@ -33,7 +33,8 @@ target_link_libraries(flat_file_storage
     libs_files
     shared_model_proto_backend
     logger
-    boost
+    Boost::boost
+    Boost::filesystem
     )
 
 add_library(postgres_storage
@@ -75,6 +76,7 @@ add_library(ametsuchi
     impl/peer_query_wsv.cpp
     impl/postgres_block_query.cpp
     impl/postgres_setting_query.cpp
+    impl/executor_common.cpp
     impl/postgres_command_executor.cpp
     impl/postgres_indexer.cpp
     impl/postgres_block_index.cpp

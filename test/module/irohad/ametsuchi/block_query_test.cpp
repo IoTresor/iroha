@@ -6,7 +6,6 @@
 #include "ametsuchi/impl/postgres_block_query.hpp"
 
 #include <boost/filesystem.hpp>
-#include <boost/optional.hpp>
 #include "ametsuchi/impl/flat_file/flat_file.hpp"
 #include "ametsuchi/impl/flat_file_block_storage_factory.hpp"
 #include "ametsuchi/impl/postgres_block_index.hpp"
@@ -14,6 +13,7 @@
 #include "backend/protobuf/proto_block_json_converter.hpp"
 #include "common/byteutils.hpp"
 #include "converters/protobuf/json_proto_converter.hpp"
+#include "datetime/time.hpp"
 #include "framework/result_fixture.hpp"
 #include "framework/test_logger.hpp"
 #include "module/irohad/ametsuchi/ametsuchi_fixture.hpp"
@@ -48,12 +48,20 @@ class BlockQueryTest : public AmetsuchiTest {
     empty_blocks = std::make_shared<PostgresBlockQuery>(
         *sql, *mock_block_storage, getTestLogger("PostgresBlockQueryEmpty"));
 
+    auto make_tx = [created_time =
+                        iroha::time::now()](const auto &creator) mutable {
+      return TestTransactionBuilder()
+          .creatorAccountId(creator)
+          .createdTime(created_time++)
+          .build();
+    };
+
     // First transaction in block1
-    auto txn1_1 = TestTransactionBuilder().creatorAccountId(creator1).build();
+    auto txn1_1 = make_tx(creator1);
     tx_hashes.push_back(txn1_1.hash());
 
     // Second transaction in block1
-    auto txn1_2 = TestTransactionBuilder().creatorAccountId(creator1).build();
+    auto txn1_2 = make_tx(creator1);
     tx_hashes.push_back(txn1_2.hash());
 
     std::vector<shared_model::proto::Transaction> txs1;
@@ -70,11 +78,11 @@ class BlockQueryTest : public AmetsuchiTest {
             .build();
 
     // First tx in block 1
-    auto txn2_1 = TestTransactionBuilder().creatorAccountId(creator1).build();
+    auto txn2_1 = make_tx(creator1);
     tx_hashes.push_back(txn2_1.hash());
 
     // Second tx in block 2
-    auto txn2_2 = TestTransactionBuilder().creatorAccountId(creator2).build();
+    auto txn2_2 = make_tx(creator2);
     tx_hashes.push_back(txn2_2.hash());
 
     std::vector<shared_model::proto::Transaction> txs2;
@@ -239,7 +247,7 @@ TEST_F(BlockQueryTest, GetBlockButItIsInvalidBlock) {
 TEST_F(BlockQueryTest, HasTxWithExistingHash) {
   for (const auto &hash : tx_hashes) {
     ASSERT_NO_THROW({
-      auto status = boost::get<tx_cache_status_responses::Committed>(
+      auto status = std::get<tx_cache_status_responses::Committed>(
           *blocks->checkTxPresence(hash));
       ASSERT_EQ(status.hash, hash);
     });
@@ -255,7 +263,7 @@ TEST_F(BlockQueryTest, HasTxWithExistingHash) {
 TEST_F(BlockQueryTest, HasTxWithMissingHash) {
   shared_model::crypto::Hash missing_tx_hash(zero_string);
   ASSERT_NO_THROW({
-    auto status = boost::get<tx_cache_status_responses::Missing>(
+    auto status = std::get<tx_cache_status_responses::Missing>(
         *blocks->checkTxPresence(missing_tx_hash));
     ASSERT_EQ(status.hash, missing_tx_hash);
   });
@@ -269,7 +277,7 @@ TEST_F(BlockQueryTest, HasTxWithMissingHash) {
  */
 TEST_F(BlockQueryTest, HasTxWithRejectedHash) {
   ASSERT_NO_THROW({
-    auto status = boost::get<tx_cache_status_responses::Rejected>(
+    auto status = std::get<tx_cache_status_responses::Rejected>(
         *blocks->checkTxPresence(rejected_hash));
     ASSERT_EQ(status.hash, rejected_hash);
   });
