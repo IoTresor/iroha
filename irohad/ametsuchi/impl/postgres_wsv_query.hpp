@@ -20,9 +20,9 @@ namespace iroha {
       PostgresWsvQuery(std::unique_ptr<soci::session> sql,
                        logger::LoggerPtr log);
 
-      boost::optional<std::vector<shared_model::interface::types::PubkeyType>>
-      getSignatories(const shared_model::interface::types::AccountIdType
-                         &account_id) override;
+      boost::optional<std::vector<std::string>> getSignatories(
+          const shared_model::interface::types::AccountIdType &account_id)
+          override;
 
       boost::optional<
           std::vector<std::shared_ptr<shared_model::interface::Peer>>>
@@ -31,6 +31,9 @@ namespace iroha {
       boost::optional<std::shared_ptr<shared_model::interface::Peer>>
       getPeerByPublicKey(shared_model::interface::types::PublicKeyHexStringView
                              public_key) override;
+
+      iroha::expected::Result<iroha::TopBlockInfo, std::string>
+      getTopBlockInfo() const override;
 
      private:
       /**

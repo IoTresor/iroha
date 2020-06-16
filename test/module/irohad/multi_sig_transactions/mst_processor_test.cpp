@@ -9,6 +9,7 @@
 #include "datetime/time.hpp"
 #include "framework/test_logger.hpp"
 #include "framework/test_subscriber.hpp"
+#include "interfaces/common_objects/string_view_types.hpp"
 #include "logger/logger.hpp"
 #include "module/irohad/multi_sig_transactions/mock_mst_transport.hpp"
 #include "module/irohad/multi_sig_transactions/mst_mocks.hpp"
@@ -19,11 +20,17 @@
 
 auto log_ = getTestLogger("MstProcessorTest");
 
+using namespace std::literals;
 using namespace iroha;
 using namespace framework::test_subscriber;
 
+using shared_model::interface::types::PeerList;
+using shared_model::interface::types::PublicKeyHexStringView;
 using testing::_;
 using testing::Return;
+
+static const PublicKeyHexStringView kPublicKey1{"first public key"sv};
+static const PublicKeyHexStringView kPublicKey2{"second public key"sv};
 
 class MstProcessorTest : public testing::Test {
  public:
@@ -47,17 +54,17 @@ class MstProcessorTest : public testing::Test {
   const shared_model::interface::types::CounterType time_before = time_now - 1;
   const shared_model::interface::types::CounterType time_after = time_now + 1;
 
-  shared_model::crypto::PublicKey another_peer_key{"another_pubkey"};
-  shared_model::interface::types::PublicKeyHexStringView another_peer_key_hex{
-      another_peer_key.hex()};
+  PublicKeyHexStringView another_peer_key_hex{"another_pubkey"sv};
+  PublicKeyHexStringView yet_another_peer_key_hex{"yet_another_pubkey"sv};
 
  protected:
   void SetUp() override {
     transport = std::make_shared<MockMstTransport>();
-    storage =
-        std::make_shared<MstStorageStateImpl>(std::make_shared<TestCompleter>(),
-                                              getTestLogger("MstState"),
-                                              getTestLogger("MstStorage"));
+    storage = MstStorageStateImpl::create(
+        std::make_shared<TestCompleter>(),
+        rxcpp::observable<>::empty<shared_model::interface::types::HashType>(),
+        getTestLogger("MstState"),
+        getTestLogger("MstStorage"));
 
     propagation_strategy = std::make_shared<MockPropagationStrategy>();
     EXPECT_CALL(*propagation_strategy, emitter())
@@ -291,8 +298,7 @@ TEST_F(MstProcessorTest, onNewPropagationUsecase) {
 
   // ---------------------------------| when |----------------------------------
   std::vector<std::shared_ptr<shared_model::interface::Peer>> peers{
-      makePeer("one", shared_model::interface::types::PubkeyType("sign_one")),
-      makePeer("two", shared_model::interface::types::PubkeyType("sign_two"))};
+      makePeer("one", kPublicKey1), makePeer("two", kPublicKey2)};
   propagation_subject.get_subscriber().on_next(peers);
 }
 
@@ -321,6 +327,65 @@ TEST_F(MstProcessorTest, SendStateSuccess) {
   // ---------------------------------| then |----------------------------------
   ASSERT_TRUE(
       storage->getDiffState(another_peer_key_hex, time_after).isEmpty());
+}
+
+/**
+ * @given initialised mst processor
+ * AND our state contains one transaction
+ *
+ * @when received notification about new propagation with two peers
+ * AND transport successfully sent the state
+ *
+ * @then same diff is applied to storage
+ */
+TEST_F(MstProcessorTest, SendStateSuccessTwiceSamePropagation) {
+  // ---------------------------------| given |---------------------------------
+  auto quorum = 2u;
+  mst_processor->propagateBatch(addSignaturesFromKeyPairs(
+      makeTestBatch(txBuilder(1, time_after, quorum)), 0, makeKey()));
+  EXPECT_CALL(*transport, sendState(_, _))
+      .WillRepeatedly(Return(rxcpp::observable<>::just(true)));
+
+  // ---------------------------------| when |----------------------------------
+  propagation_subject.get_subscriber().on_next(
+      PeerList{makePeer("one", another_peer_key_hex),
+               makePeer("two", yet_another_peer_key_hex)});
+
+  // ---------------------------------| then |----------------------------------
+  ASSERT_TRUE(
+      storage->getDiffState(another_peer_key_hex, time_after).isEmpty());
+  ASSERT_TRUE(
+      storage->getDiffState(yet_another_peer_key_hex, time_after).isEmpty());
+}
+
+/**
+ * @given initialised mst processor
+ * AND our state contains one transaction
+ *
+ * @when received two notifications about new propagation with different peers
+ * AND transport successfully sent the state
+ *
+ * @then same diff is applied to storage
+ */
+TEST_F(MstProcessorTest, SendStateSuccessTwiceDifferentPropagations) {
+  // ---------------------------------| given |---------------------------------
+  auto quorum = 2u;
+  mst_processor->propagateBatch(addSignaturesFromKeyPairs(
+      makeTestBatch(txBuilder(1, time_after, quorum)), 0, makeKey()));
+  EXPECT_CALL(*transport, sendState(_, _))
+      .WillRepeatedly(Return(rxcpp::observable<>::just(true)));
+
+  // ---------------------------------| when |----------------------------------
+  propagation_subject.get_subscriber().on_next(
+      PeerList{makePeer("one", another_peer_key_hex)});
+  propagation_subject.get_subscriber().on_next(
+      PeerList{makePeer("two", yet_another_peer_key_hex)});
+
+  // ---------------------------------| then |----------------------------------
+  ASSERT_TRUE(
+      storage->getDiffState(another_peer_key_hex, time_after).isEmpty());
+  ASSERT_TRUE(
+      storage->getDiffState(yet_another_peer_key_hex, time_after).isEmpty());
 }
 
 /**
@@ -364,8 +429,7 @@ TEST_F(MstProcessorTest, emptyStatePropagation) {
   EXPECT_CALL(*transport, sendState(_, _)).Times(0);
 
   // ---------------------------------| given |---------------------------------
-  shared_model::interface::types::PubkeyType public_key{"sign_one"};
-  auto another_peer = makePeer("another", public_key);
+  auto another_peer = makePeer("another", kPublicKey1);
 
   auto another_peer_state = MstState::empty(
       getTestLogger("MstState"),
@@ -373,7 +437,7 @@ TEST_F(MstProcessorTest, emptyStatePropagation) {
   another_peer_state += makeTestBatch(txBuilder(1));
 
   storage->apply(
-      shared_model::interface::types::PublicKeyHexStringView{public_key.hex()},
+      shared_model::interface::types::PublicKeyHexStringView{kPublicKey1},
       another_peer_state);
   ASSERT_TRUE(storage
                   ->getDiffState(

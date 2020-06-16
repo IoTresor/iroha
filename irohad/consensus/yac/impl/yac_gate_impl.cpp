@@ -13,7 +13,6 @@
 #include "consensus/yac/storage/yac_common.hpp"
 #include "consensus/yac/yac_hash_provider.hpp"
 #include "consensus/yac/yac_peer_orderer.hpp"
-#include "cryptography/public_key.hpp"
 #include "interfaces/common_objects/signature.hpp"
 #include "interfaces/iroha_internal/block.hpp"
 #include "logger/logger.hpp"
@@ -25,8 +24,7 @@ namespace {
     return boost::copy_range<
         shared_model::interface::types::PublicKeyCollectionType>(
         votes | boost::adaptors::transformed([](auto &vote) {
-          return shared_model::crypto::Blob::fromHexString(
-              vote.signature->publicKey());
+          return vote.signature->publicKey();
         }));
   }
 }  // namespace
@@ -117,6 +115,10 @@ namespace iroha {
 
       rxcpp::observable<YacGateImpl::GateObject> YacGateImpl::onOutcome() {
         return published_events_;
+      }
+
+      void YacGateImpl::stop() {
+        hash_gate_->stop();
       }
 
       void YacGateImpl::copySignatures(const CommitMessage &commit) {

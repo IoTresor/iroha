@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 #include <memory>
+#include "framework/crypto_literals.hpp"
 #include "framework/test_logger.hpp"
 #include "logger/logger.hpp"
 #include "module/irohad/multi_sig_transactions/mst_test_helpers.hpp"
@@ -18,8 +19,11 @@ class StorageTest : public testing::Test {
  public:
   void SetUp() override {
     completer_ = std::make_shared<TestCompleter>();
-    storage = std::make_shared<MstStorageStateImpl>(
-        completer_, getTestLogger("MstState"), getTestLogger("MstStorage"));
+    storage = MstStorageStateImpl::create(
+        completer_,
+        rxcpp::observable<>::empty<shared_model::interface::types::HashType>(),
+        getTestLogger("MstState"),
+        getTestLogger("MstStorage"));
     fillOwnState();
   }
 
@@ -50,8 +54,7 @@ TEST_F(StorageTest, StorageWhenApplyOtherState) {
   new_state += makeTestBatch(txBuilder(6, creation_time));
   new_state += makeTestBatch(txBuilder(7, creation_time));
 
-  storage->apply(shared_model::interface::types::PublicKeyHexStringView{"0B"sv},
-                 new_state);
+  storage->apply("0B"_hex_pubkey, new_state);
 
   ASSERT_EQ(6,
             storage->getDiffState(absent_peer_key, creation_time)
@@ -160,13 +163,13 @@ TEST_F(StorageTest, DiffStateContainsNewSignature) {
       addSignaturesFromKeyPairs(make_batch(), 0, keypairs[1]));
 
   // diff with peer A now has the batch with the signature that just came Torii
-  EXPECT_THAT(storage->getDiffState(peer_A_key, creation_time).getBatches(),
-              Contains(Pointee(Property(
-                  &TransactionBatch::transactions,
-                  ElementsAre(Pointee(AllOf(
-                      Property(&Transaction::reducedHash, Eq(reduced_hash)),
-                      Property(&Transaction::signatures,
-                               Contains(Property(
-                                   &Signature::publicKey,
-                                   Eq(keypairs[1].publicKey().hex())))))))))));
+  EXPECT_THAT(
+      storage->getDiffState(peer_A_key, creation_time).getBatches(),
+      Contains(Pointee(Property(
+          &TransactionBatch::transactions,
+          ElementsAre(Pointee(AllOf(
+              Property(&Transaction::reducedHash, Eq(reduced_hash)),
+              Property(&Transaction::signatures,
+                       Contains(Property(&Signature::publicKey,
+                                         Eq(keypairs[1].publicKey())))))))))));
 }
